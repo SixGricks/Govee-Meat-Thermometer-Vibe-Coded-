@@ -158,6 +158,7 @@
     /* ---- footer ---- */
     .foot { padding: 12px 16px 2px; border-top: 1px solid var(--divider-color, rgba(127,127,127,.2)); }
     .foot-row { display: flex; align-items: center; gap: 10px; }
+    .foot-row .batt { margin-left: auto; }
     .foot-label { font-size: .85em; color: var(--secondary-text-color); }
     .foot-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .pill { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; font-size: .85em;
@@ -165,10 +166,11 @@
       border: 1px solid var(--divider-color, rgba(127,127,127,.4)); }
     .pill:hover { background: rgba(127,127,127,.1); border-color: var(--primary-color, #03a9f4); }
     .pill .ico { font-size: 1.05em; line-height: 1; }
+    .rows-empty { padding: 20px 16px; font-size: .9em; color: var(--secondary-text-color); text-align: center; }
     .hint { padding: 14px 16px; font-size: .9em; color: var(--warning-color, #ffa600); }
 
     /* ---- modal ---- */
-    .overlay { position: fixed; inset: 0; z-index: 9; display: none; align-items: center;
+    .overlay { position: fixed; inset: 0; z-index: 99; display: none; align-items: center;
       justify-content: center; background: rgba(0,0,0,.45); padding: 16px; box-sizing: border-box; }
     .overlay.open { display: flex; }
     .modal { width: 100%; max-width: 420px; max-height: 88vh; overflow: auto;
@@ -330,18 +332,22 @@
       this._rowsHost = el('div', 'rows');
       this._wrap.append(this._rowsHost);
 
-      // footer: approach offset + action pills
+      // footer: approach offset + device battery + action pills
       this._foot = el('div', 'foot');
       const footRow = el('div', 'foot-row');
       footRow.append(el('span', 'foot-label', 'Approach alert'));
       this._offsetChip = this._buildChip('Offset', 1, 0, 50);
       footRow.append(this._offsetChip.root);
+      // One device battery (the H5055 has a single base-station battery).
+      this._footBatt = this._buildBattery();
+      footRow.append(this._footBatt.root);
       this._foot.append(footRow);
 
       const pills = el('div', 'foot-pills');
       const notifyPill = el('button', 'pill');
       notifyPill.type = 'button';
-      notifyPill.append(el('span', 'ico', '🔔'), el('span', null, 'Notifications'));
+      this._notifyPillLabel = el('span', null, 'Notifications');
+      notifyPill.append(el('span', 'ico', '🔔'), this._notifyPillLabel);
       notifyPill.addEventListener('click', () => this._openNotifyModal());
       const presetPill = el('button', 'pill');
       presetPill.type = 'button';
@@ -369,6 +375,8 @@
         }
       });
       this._modalPanel = el('div', 'modal');
+      this._modalPanel.setAttribute('role', 'dialog');
+      this._modalPanel.setAttribute('aria-modal', 'true');
       this._overlay.append(this._modalPanel);
 
       root.append(style, card, this._overlay);
@@ -415,6 +423,13 @@
         this._rows = [];
         for (let i = 0; i < probes.length; i++) this._rows.push(this._buildRow());
         this._rowCount = probes.length;
+        if (probes.length === 0) {
+          const msg =
+            this._config.hide_unavailable && allProbes.length
+              ? 'All probes are offline — they\'re hidden by this card\'s settings.'
+              : 'No probes to show.';
+          this._rowsHost.append(el('div', 'rows-empty', msg));
+        }
       }
       for (let i = 0; i < probes.length; i++) this._rows[i].update(probes[i], ctx);
 
@@ -422,6 +437,10 @@
         value: hub.attributes.approach_offset,
         entityId: hub.attributes.approach_offset_entity,
       });
+      this._footBatt.update(ctx.showBattery ? ctx.battery : null);
+
+      const selCount = (hub.attributes.notify_selected || []).length;
+      this._notifyPillLabel.textContent = selCount ? `Notifications (${selCount})` : 'Notifications';
 
       if (this._modalUpdater) this._modalUpdater();
       this._refreshAgo();
@@ -443,16 +462,15 @@
 
       const rowEl = el('div', 'probe-card st-gray');
 
-      // header: name + battery + ago
+      // header: name + ago
       const head = el('div', 'pc-head');
       const name = el('button', 'pc-name', 'Probe');
       name.type = 'button';
       name.title = 'Click to rename';
       name.addEventListener('click', () => card._beginNameEdit(state, name));
       const headRight = el('div', 'pc-head-right');
-      const batt = card._buildBattery();
       const ago = el('div', 'ago', '');
-      headRight.append(batt.root, ago);
+      headRight.append(ago);
       head.append(name, headRight);
 
       // body: big current temp + alarm summary, opens the detail modal.
@@ -460,6 +478,7 @@
       const body = el('div', 'pc-body nosignal');
       body.setAttribute('role', 'button');
       body.setAttribute('tabindex', '0');
+      body.setAttribute('aria-label', 'Probe details and controls');
       body.title = 'Tap for details and controls';
       const current = el('div', 'pc-current');
       current.append(el('div', 'pc-clabel', 'Current temperature'));
@@ -497,6 +516,7 @@
       });
       const edit = el('button', 'pc-edit');
       edit.type = 'button';
+      edit.setAttribute('aria-expanded', 'false');
       edit.append(el('span', null, 'Edit alarm'));
       edit.insertAdjacentHTML('beforeend', CARET_SVG);
       tools.append(bell, edit);
@@ -517,6 +537,7 @@
       edit.addEventListener('click', () => {
         const open = expand.classList.toggle('open');
         edit.classList.toggle('open', open);
+        edit.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
 
       rowEl.append(head, body, tools, bar, expand);
@@ -543,8 +564,6 @@
           const summary = card._alarmSummary(probe);
           aval.textContent = summary || 'Not set';
           aval.classList.toggle('off', !summary);
-
-          batt.update(ctx.showBattery ? ctx.battery : null);
 
           lowChip.update({ value: probe.low, entityId: probe.low_entity });
           highChip.update({ value: probe.high, entityId: probe.high_entity });
@@ -969,6 +988,13 @@
       });
     }
 
+    /* ---- "mobile_app_pixel_9" -> "Pixel 9" (display only) ---- */
+    _prettyService(svc) {
+      const base = String(svc).replace(/^mobile_app_/, '').replace(/_/g, ' ').trim();
+      if (!base) return svc;
+      return base.replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
     /* ---- choose who gets notifications ---- */
     _openNotifyModal() {
       const card = this;
@@ -995,7 +1021,9 @@
             cb.type = 'checkbox';
             cb.value = svc;
             cb.checked = selected.has(svc);
-            row.append(cb, el('span', null, svc));
+            const label = el('span', null, card._prettyService(svc));
+            label.title = svc; // keep the raw service id discoverable
+            row.append(cb, label);
             body.append(row);
             checks.push(cb);
           }
