@@ -1,0 +1,893 @@
+# ============================================================================
+# GOVEE H5055 BBQ THERMOMETER — HOME ASSISTANT PACKAGE
+# ============================================================================
+#
+# WHAT THIS FILE IS
+# -----------------
+# A self-contained Home Assistant "package" that adds smart alerting on top of
+# the Govee H5055 6-probe BBQ thermometer. The thermometer itself is read-only:
+# its data arrives passively over Bluetooth advertisements (via an ESPHome
+# Bluetooth proxy + the official Govee BLE integration), so all targets,
+# alarms, and notifications live here in Home Assistant — not on the device.
+#
+# This package creates, for each of the 6 probes:
+#   * a friendly name helper           (input_text.bbq_probe_N_name)
+#   * a high-target helper             (input_number.bbq_probe_N_high)
+#   * a low-target helper              (input_number.bbq_probe_N_low)
+#   * an "alerts armed" switch         (input_boolean.bbq_probe_N_alerts)
+#   * three template binary sensors    (above_high / below_low / approaching_high)
+# ...plus a global "approaching target" offset, a preset list + script, three
+# automations (alarm, repeating reminder, pause-from-notification), and a
+# notify group that fans alerts out to your phone(s).
+#
+# HOW TO INSTALL
+# --------------
+# 1. Make sure your configuration.yaml contains:
+#        homeassistant:
+#          packages: !include_dir_named packages
+# 2. Drop this file into the "packages" folder next to configuration.yaml.
+# 3. Complete the REQUIRED EDITS below, then restart Home Assistant.
+#
+# ============================================================================
+# REQUIRED EDITS — do these before restarting HA!
+# ============================================================================
+# [ ] 1. Replace ALL SIX probe entity placeholders with your real entity ids:
+#          sensor.kitchen_meat_thermometer_temperature_probe_1
+#          sensor.kitchen_meat_thermometer_temperature_probe_2
+#          sensor.kitchen_meat_thermometer_temperature_probe_3
+#          sensor.kitchen_meat_thermometer_temperature_probe_4
+#          sensor.kitchen_meat_thermometer_temperature_probe_5
+#          sensor.kitchen_meat_thermometer_temperature_probe_6
+#        Find your real ids in Developer Tools > States by searching for
+#        "h5055" or "probe". Each placeholder appears more than once, so use
+#        your editor's find-and-replace (one pass per probe).
+#
+# [ ] 2. Replace mobile_app_YOUR_PHONE_HERE (in the notify: block at the very
+#        bottom) with your Companion app notify service. Find it in
+#        Developer Tools > Actions by typing "notify.mobile_app" — use the
+#        part after "notify." (e.g. notify.mobile_app_pixel_8 ->
+#        mobile_app_pixel_8).
+# ============================================================================
+
+
+# ============================================================================
+# HELPERS — probe names
+# ============================================================================
+# One text helper per probe so you can label what's on each probe (e.g.
+# "Brisket flat"). These names show up in the dashboard card and in every
+# notification.
+#
+# NOTE: we deliberately do NOT set 'initial:' here. If we did, Home Assistant
+# would reset every name back to that value on each restart — and nobody wants
+# their brisket renamed mid-cook.
+input_text:
+  bbq_probe_1_name:
+    name: BBQ Probe 1 Name
+    max: 30
+    icon: mdi:tag
+  bbq_probe_2_name:
+    name: BBQ Probe 2 Name
+    max: 30
+    icon: mdi:tag
+  bbq_probe_3_name:
+    name: BBQ Probe 3 Name
+    max: 30
+    icon: mdi:tag
+  bbq_probe_4_name:
+    name: BBQ Probe 4 Name
+    max: 30
+    icon: mdi:tag
+  bbq_probe_5_name:
+    name: BBQ Probe 5 Name
+    max: 30
+    icon: mdi:tag
+  bbq_probe_6_name:
+    name: BBQ Probe 6 Name
+    max: 30
+    icon: mdi:tag
+
+
+# ============================================================================
+# HELPERS — high/low targets + global "approaching" offset
+# ============================================================================
+# Targets are unit-agnostic: whatever unit your probe sensors report (°F or
+# °C) is the unit these numbers are compared against. The "°" unit label here
+# is just cosmetic.
+#
+# A value of 0 means "this alarm is disabled" — the template sensors below
+# only fire when the target is greater than 0.
+input_number:
+  # ----- Probe 1 -----
+  bbq_probe_1_high:
+    name: BBQ Probe 1 High Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-up
+  bbq_probe_1_low:
+    name: BBQ Probe 1 Low Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-down
+
+  # ----- Probe 2 -----
+  bbq_probe_2_high:
+    name: BBQ Probe 2 High Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-up
+  bbq_probe_2_low:
+    name: BBQ Probe 2 Low Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-down
+
+  # ----- Probe 3 -----
+  bbq_probe_3_high:
+    name: BBQ Probe 3 High Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-up
+  bbq_probe_3_low:
+    name: BBQ Probe 3 Low Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-down
+
+  # ----- Probe 4 -----
+  bbq_probe_4_high:
+    name: BBQ Probe 4 High Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-up
+  bbq_probe_4_low:
+    name: BBQ Probe 4 Low Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-down
+
+  # ----- Probe 5 -----
+  bbq_probe_5_high:
+    name: BBQ Probe 5 High Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-up
+  bbq_probe_5_low:
+    name: BBQ Probe 5 Low Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-down
+
+  # ----- Probe 6 -----
+  bbq_probe_6_high:
+    name: BBQ Probe 6 High Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-up
+  bbq_probe_6_low:
+    name: BBQ Probe 6 Low Target
+    min: 0
+    max: 600
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-down
+
+  # ----- Global "approaching target" offset -----
+  # When a probe gets within this many degrees of its high target, you get a
+  # one-shot heads-up notification ("almost there!"). Set to 0 to disable
+  # approach warnings entirely.
+  #
+  # NOTE: like the name helpers above, no 'initial:' here — it would reset
+  # your chosen offset on every restart. A fresh install starts at 0
+  # (approach warnings off); set it to 10 once after installing (see README).
+  bbq_approach_offset:
+    name: BBQ Approaching-Target Offset
+    min: 0
+    max: 50
+    step: 1
+    mode: box
+    unit_of_measurement: "°"
+    icon: mdi:thermometer-chevron-up
+
+
+# ============================================================================
+# HELPERS — alerts armed per probe
+# ============================================================================
+# Master switch per probe. When OFF, that probe's targets still evaluate (the
+# binary sensors still turn on/off) but NO notifications are sent. The
+# "Pause alerts" button on a notification flips this off for you.
+input_boolean:
+  bbq_probe_1_alerts:
+    name: BBQ Probe 1 Alerts
+    icon: mdi:bell-ring
+  bbq_probe_2_alerts:
+    name: BBQ Probe 2 Alerts
+    icon: mdi:bell-ring
+  bbq_probe_3_alerts:
+    name: BBQ Probe 3 Alerts
+    icon: mdi:bell-ring
+  bbq_probe_4_alerts:
+    name: BBQ Probe 4 Alerts
+    icon: mdi:bell-ring
+  bbq_probe_5_alerts:
+    name: BBQ Probe 5 Alerts
+    icon: mdi:bell-ring
+  bbq_probe_6_alerts:
+    name: BBQ Probe 6 Alerts
+    icon: mdi:bell-ring
+
+
+# ============================================================================
+# HELPERS — presets
+# ============================================================================
+# A list of named target presets. Picking one here does nothing by itself —
+# it's applied to a probe via script.bbq_apply_preset (below), either from
+# the dashboard card or Developer Tools > Actions.
+input_select:
+  bbq_presets:
+    name: BBQ Presets
+    icon: mdi:food-steak
+    options:
+      - "Chicken (165)"
+      - "Pork ribs (195)"
+      - "Brisket (203)"
+      # ============================================================
+      # TODO(user): YOUR PRESETS — add your own meats here, AND in the
+      # preset_map inside script.bbq_apply_preset below. Keep names identical.
+      # ============================================================
+
+
+# ============================================================================
+# SCRIPT — apply a preset to a probe
+# ============================================================================
+# Call this with a probe number (1-6) and a preset name; it writes the
+# preset's high (and optionally low) values into that probe's target helpers.
+# Example call (Developer Tools > Actions):
+#   action: script.bbq_apply_preset
+#   data:
+#     probe: 2
+#     preset: "Brisket (203)"
+script:
+  bbq_apply_preset:
+    alias: "BBQ: apply preset to probe"
+    icon: mdi:content-save-cog
+    description: >-
+      Sets a probe's high (and optionally low) target input_numbers from a
+      named preset.
+    fields:
+      probe:
+        name: Probe
+        description: Which probe (1-6) to apply the preset to.
+        required: true
+        example: 1
+        selector:
+          number:
+            min: 1
+            max: 6
+            step: 1
+            mode: box
+      preset:
+        name: Preset
+        description: Which preset to apply (must match an input_select option).
+        required: true
+        example: "Chicken (165)"
+        # A 'state' selector offers the input_select's options dynamically,
+        # so this dropdown stays in sync with your presets automatically.
+        selector:
+          state:
+            entity_id: input_select.bbq_presets
+    # mode/max: allow applying presets to several probes back-to-back from
+    # the dashboard card without the second call being silently dropped.
+    mode: parallel
+    max: 6
+    variables:
+      # ============================================================
+      # TODO(user): YOUR PRESETS — add your own meats here, AND in the
+      # input_select.bbq_presets options above. Keep names identical in
+      # both places. 'low: 0' means "leave the probe's low target alone".
+      # ============================================================
+      preset_map:
+        "Chicken (165)": { high: 165, low: 0 }
+        "Pork ribs (195)": { high: 195, low: 0 }
+        "Brisket (203)": { high: 203, low: 0 }
+      # Look up the chosen preset; defaults keep the script from blowing up
+      # if a preset name has a typo (it just sets nothing meaningful).
+      preset_values: "{{ preset_map.get(preset, {'high': 0, 'low': 0}) }}"
+    sequence:
+      # Always set the high target.
+      - action: input_number.set_value
+        target:
+          entity_id: "input_number.bbq_probe_{{ probe | int }}_high"
+        data:
+          value: "{{ preset_values.high }}"
+      # Only set the low target if the preset actually defines one (> 0).
+      # Otherwise we leave whatever low target was already there untouched.
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ (preset_values.low | float(0)) > 0 }}"
+            sequence:
+              - action: input_number.set_value
+                target:
+                  entity_id: "input_number.bbq_probe_{{ probe | int }}_low"
+                data:
+                  value: "{{ preset_values.low }}"
+
+
+# ============================================================================
+# TEMPLATE BINARY SENSORS — pure threshold logic
+# ============================================================================
+# Three sensors per probe:
+#   above_high       -> temp >= high target (and high target > 0)
+#   below_low        -> temp <= low target  (and low target > 0)
+#   approaching_high -> within 'approach offset' degrees below the high target
+#
+# Design notes (worth understanding as you learn HA):
+#   * These sensors are PURE math. They do NOT check whether alerts are armed
+#     (input_boolean.bbq_probe_N_alerts) — that's enforced in the automations.
+#     This way the dashboard card can still show "over target!" visually even
+#     while notifications are paused.
+#   * availability: has_value(...) marks the sensor 'unavailable' when the
+#     probe is unplugged or out of Bluetooth range, instead of falsely
+#     reporting 'off' (or worse, alarming on garbage data).
+#   * delay_on: 10 seconds debounces BLE noise — the condition must hold for
+#     10 continuous seconds before the sensor flips on, so a single spurious
+#     reading won't wake you up.
+template:
+  - binary_sensor:
+      # ----------------------------- Probe 1 -----------------------------
+      - name: "BBQ Probe 1 Above High"
+        unique_id: bbq_probe_1_above_high
+        icon: mdi:fire-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_1') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_1') | float(0) %}
+          {% set high = states('input_number.bbq_probe_1_high') | float(0) %}
+          {{ high > 0 and temp >= high }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 1 Below Low"
+        unique_id: bbq_probe_1_below_low
+        icon: mdi:snowflake-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_1') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_1') | float(0) %}
+          {% set low = states('input_number.bbq_probe_1_low') | float(0) %}
+          {# 'temp > 0' guards against an unplugged probe reporting 0 #}
+          {{ low > 0 and temp > 0 and temp <= low }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 1 Approaching High"
+        unique_id: bbq_probe_1_approaching_high
+        icon: mdi:progress-clock
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_1') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_1') | float(0) %}
+          {% set high = states('input_number.bbq_probe_1_high') | float(0) %}
+          {% set offset = states('input_number.bbq_approach_offset') | float(0) %}
+          {{ high > 0 and offset > 0 and (high - offset) <= temp and temp < high }}
+        delay_on: "00:00:10"
+
+      # ----------------------------- Probe 2 -----------------------------
+      - name: "BBQ Probe 2 Above High"
+        unique_id: bbq_probe_2_above_high
+        icon: mdi:fire-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_2') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_2') | float(0) %}
+          {% set high = states('input_number.bbq_probe_2_high') | float(0) %}
+          {{ high > 0 and temp >= high }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 2 Below Low"
+        unique_id: bbq_probe_2_below_low
+        icon: mdi:snowflake-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_2') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_2') | float(0) %}
+          {% set low = states('input_number.bbq_probe_2_low') | float(0) %}
+          {# 'temp > 0' guards against an unplugged probe reporting 0 #}
+          {{ low > 0 and temp > 0 and temp <= low }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 2 Approaching High"
+        unique_id: bbq_probe_2_approaching_high
+        icon: mdi:progress-clock
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_2') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_2') | float(0) %}
+          {% set high = states('input_number.bbq_probe_2_high') | float(0) %}
+          {% set offset = states('input_number.bbq_approach_offset') | float(0) %}
+          {{ high > 0 and offset > 0 and (high - offset) <= temp and temp < high }}
+        delay_on: "00:00:10"
+
+      # ----------------------------- Probe 3 -----------------------------
+      - name: "BBQ Probe 3 Above High"
+        unique_id: bbq_probe_3_above_high
+        icon: mdi:fire-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_3') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_3') | float(0) %}
+          {% set high = states('input_number.bbq_probe_3_high') | float(0) %}
+          {{ high > 0 and temp >= high }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 3 Below Low"
+        unique_id: bbq_probe_3_below_low
+        icon: mdi:snowflake-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_3') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_3') | float(0) %}
+          {% set low = states('input_number.bbq_probe_3_low') | float(0) %}
+          {# 'temp > 0' guards against an unplugged probe reporting 0 #}
+          {{ low > 0 and temp > 0 and temp <= low }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 3 Approaching High"
+        unique_id: bbq_probe_3_approaching_high
+        icon: mdi:progress-clock
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_3') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_3') | float(0) %}
+          {% set high = states('input_number.bbq_probe_3_high') | float(0) %}
+          {% set offset = states('input_number.bbq_approach_offset') | float(0) %}
+          {{ high > 0 and offset > 0 and (high - offset) <= temp and temp < high }}
+        delay_on: "00:00:10"
+
+      # ----------------------------- Probe 4 -----------------------------
+      - name: "BBQ Probe 4 Above High"
+        unique_id: bbq_probe_4_above_high
+        icon: mdi:fire-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_4') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_4') | float(0) %}
+          {% set high = states('input_number.bbq_probe_4_high') | float(0) %}
+          {{ high > 0 and temp >= high }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 4 Below Low"
+        unique_id: bbq_probe_4_below_low
+        icon: mdi:snowflake-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_4') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_4') | float(0) %}
+          {% set low = states('input_number.bbq_probe_4_low') | float(0) %}
+          {# 'temp > 0' guards against an unplugged probe reporting 0 #}
+          {{ low > 0 and temp > 0 and temp <= low }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 4 Approaching High"
+        unique_id: bbq_probe_4_approaching_high
+        icon: mdi:progress-clock
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_4') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_4') | float(0) %}
+          {% set high = states('input_number.bbq_probe_4_high') | float(0) %}
+          {% set offset = states('input_number.bbq_approach_offset') | float(0) %}
+          {{ high > 0 and offset > 0 and (high - offset) <= temp and temp < high }}
+        delay_on: "00:00:10"
+
+      # ----------------------------- Probe 5 -----------------------------
+      - name: "BBQ Probe 5 Above High"
+        unique_id: bbq_probe_5_above_high
+        icon: mdi:fire-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_5') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_5') | float(0) %}
+          {% set high = states('input_number.bbq_probe_5_high') | float(0) %}
+          {{ high > 0 and temp >= high }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 5 Below Low"
+        unique_id: bbq_probe_5_below_low
+        icon: mdi:snowflake-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_5') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_5') | float(0) %}
+          {% set low = states('input_number.bbq_probe_5_low') | float(0) %}
+          {# 'temp > 0' guards against an unplugged probe reporting 0 #}
+          {{ low > 0 and temp > 0 and temp <= low }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 5 Approaching High"
+        unique_id: bbq_probe_5_approaching_high
+        icon: mdi:progress-clock
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_5') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_5') | float(0) %}
+          {% set high = states('input_number.bbq_probe_5_high') | float(0) %}
+          {% set offset = states('input_number.bbq_approach_offset') | float(0) %}
+          {{ high > 0 and offset > 0 and (high - offset) <= temp and temp < high }}
+        delay_on: "00:00:10"
+
+      # ----------------------------- Probe 6 -----------------------------
+      - name: "BBQ Probe 6 Above High"
+        unique_id: bbq_probe_6_above_high
+        icon: mdi:fire-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_6') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_6') | float(0) %}
+          {% set high = states('input_number.bbq_probe_6_high') | float(0) %}
+          {{ high > 0 and temp >= high }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 6 Below Low"
+        unique_id: bbq_probe_6_below_low
+        icon: mdi:snowflake-alert
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_6') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_6') | float(0) %}
+          {% set low = states('input_number.bbq_probe_6_low') | float(0) %}
+          {# 'temp > 0' guards against an unplugged probe reporting 0 #}
+          {{ low > 0 and temp > 0 and temp <= low }}
+        delay_on: "00:00:10"
+      - name: "BBQ Probe 6 Approaching High"
+        unique_id: bbq_probe_6_approaching_high
+        icon: mdi:progress-clock
+        availability: "{{ has_value('sensor.kitchen_meat_thermometer_temperature_probe_6') }}"
+        state: >-
+          {% set temp = states('sensor.kitchen_meat_thermometer_temperature_probe_6') | float(0) %}
+          {% set high = states('input_number.bbq_probe_6_high') | float(0) %}
+          {% set offset = states('input_number.bbq_approach_offset') | float(0) %}
+          {{ high > 0 and offset > 0 and (high - offset) <= temp and temp < high }}
+        delay_on: "00:00:10"
+
+
+# ============================================================================
+# AUTOMATIONS
+# ============================================================================
+automation:
+  # --------------------------------------------------------------------------
+  # AUTOMATION 1 — "BBQ: probe alarm"
+  # --------------------------------------------------------------------------
+  # Fires the moment any threshold binary sensor flips on. The trigger id
+  # encodes which probe and which kind of alarm ("1_high", "4_approach", ...)
+  # so one automation handles all 18 sensors.
+  #
+  # mode: parallel lets multiple probes alarm at the same time without one
+  # notification blocking another (very possible with 6 probes going).
+  #
+  # Every trigger uses from: "off" so only a GENUINE off -> on threshold
+  # crossing alarms. Without it, a brief Bluetooth dropout (sensor flips to
+  # 'unavailable' and back while the meat is still over target) would re-fire
+  # the loud alarm. Any crossing masked by a dropout is still caught within
+  # 5 minutes by the reminder automation below.
+  - id: bbq_probe_alarm
+    alias: "BBQ: probe alarm"
+    description: >-
+      Sends a push notification when a probe crosses its high target, drops
+      below its low target, or approaches its high target. Only fires if that
+      probe's alerts are armed.
+    mode: parallel
+    max: 18
+    trigger:
+      # ----- Above-high triggers -----
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_1_above_high
+        from: "off"
+        to: "on"
+        id: "1_high"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_2_above_high
+        from: "off"
+        to: "on"
+        id: "2_high"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_3_above_high
+        from: "off"
+        to: "on"
+        id: "3_high"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_4_above_high
+        from: "off"
+        to: "on"
+        id: "4_high"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_5_above_high
+        from: "off"
+        to: "on"
+        id: "5_high"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_6_above_high
+        from: "off"
+        to: "on"
+        id: "6_high"
+      # ----- Below-low triggers -----
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_1_below_low
+        from: "off"
+        to: "on"
+        id: "1_low"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_2_below_low
+        from: "off"
+        to: "on"
+        id: "2_low"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_3_below_low
+        from: "off"
+        to: "on"
+        id: "3_low"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_4_below_low
+        from: "off"
+        to: "on"
+        id: "4_low"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_5_below_low
+        from: "off"
+        to: "on"
+        id: "5_low"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_6_below_low
+        from: "off"
+        to: "on"
+        id: "6_low"
+      # ----- Approaching-high triggers -----
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_1_approaching_high
+        from: "off"
+        to: "on"
+        id: "1_approach"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_2_approaching_high
+        from: "off"
+        to: "on"
+        id: "2_approach"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_3_approaching_high
+        from: "off"
+        to: "on"
+        id: "3_approach"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_4_approaching_high
+        from: "off"
+        to: "on"
+        id: "4_approach"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_5_approaching_high
+        from: "off"
+        to: "on"
+        id: "5_approach"
+      - trigger: state
+        entity_id: binary_sensor.bbq_probe_6_approaching_high
+        from: "off"
+        to: "on"
+        id: "6_approach"
+    condition:
+      # Arming check: parse the probe number out of the trigger id
+      # ("3_high" -> "3") and require that probe's alerts to be on.
+      - condition: template
+        value_template: >-
+          {{ is_state('input_boolean.bbq_probe_' ~ trigger.id.split('_')[0] ~ '_alerts', 'on') }}
+    action:
+      - variables:
+          # "3_approach" -> probe = 3, kind = "approach"
+          probe: "{{ trigger.id.split('_')[0] | int }}"
+          kind: "{{ trigger.id.split('_')[1] }}"
+          # Friendly name, falling back to "Probe N" if the helper is empty
+          # or has never been set (state 'unknown').
+          probe_name: >-
+            {% set n = states('input_text.bbq_probe_' ~ probe ~ '_name') | trim %}
+            {{ n if n not in ['', 'unknown', 'unavailable'] else 'Probe ' ~ probe }}
+          # Current temperature comes from the binary sensor's source probe.
+          # trigger.entity_id is the binary sensor; we read the matching
+          # placeholder sensor by probe number instead.
+          probe_sensors:
+            1: sensor.kitchen_meat_thermometer_temperature_probe_1
+            2: sensor.kitchen_meat_thermometer_temperature_probe_2
+            3: sensor.kitchen_meat_thermometer_temperature_probe_3
+            4: sensor.kitchen_meat_thermometer_temperature_probe_4
+            5: sensor.kitchen_meat_thermometer_temperature_probe_5
+            6: sensor.kitchen_meat_thermometer_temperature_probe_6
+          temp: "{{ states(probe_sensors[probe]) | float(0) | round(1) }}"
+          high_target: "{{ states('input_number.bbq_probe_' ~ probe ~ '_high') | float(0) | round(0) }}"
+          low_target: "{{ states('input_number.bbq_probe_' ~ probe ~ '_low') | float(0) | round(0) }}"
+          notify_title: >-
+            {% if kind == 'high' %}
+              🔥 {{ probe_name }} hit {{ temp }}°
+            {% elif kind == 'low' %}
+              🥶 {{ probe_name }} dropped to {{ temp }}°
+            {% else %}
+              ⏰ {{ probe_name }} approaching target
+            {% endif %}
+          notify_message: >-
+            {% if kind == 'high' %}
+              Now {{ temp }}° — high target is {{ high_target }}°.
+            {% elif kind == 'low' %}
+              Now {{ temp }}° — low target is {{ low_target }}°.
+            {% else %}
+              Now {{ temp }}° — high target is {{ high_target }}° ({{ (high_target - temp) | round(1) }}° to go).
+            {% endif %}
+      - action: notify.bbq_alert_targets
+        data:
+          title: "{{ notify_title | trim }}"
+          message: "{{ notify_message | trim }}"
+          data:
+            # tag makes repeat notifications for the same probe REPLACE the
+            # previous one instead of stacking up in the notification shade.
+            tag: "bbq-probe-{{ probe }}"
+            # ----- Android keys -----
+            channel: "BBQ Alarm"           # own channel -> own sound/vibration settings
+            importance: high
+            priority: high
+            ttl: 0                          # deliver immediately, don't batch
+            sticky: "true"                  # tapping doesn't dismiss it
+            actions:
+              - action: "BBQ_PAUSE_{{ probe }}"
+                title: "Pause alerts"
+            # ----- iOS keys (harmless on Android) -----
+            push:
+              sound:
+                name: default
+                critical: 1
+                volume: 1.0
+              interruption-level: time-sensitive
+
+  # --------------------------------------------------------------------------
+  # AUTOMATION 2 — "BBQ: alarm reminder"
+  # --------------------------------------------------------------------------
+  # If a probe is STILL above its high target (or below its low target) and
+  # still armed, re-send the notification every 5 minutes so you can't miss
+  # it. Because each notification uses the same tag, the reminder REPLACES
+  # the previous notification rather than piling up.
+  #
+  # "Approaching" alerts deliberately do NOT repeat — they are a one-shot
+  # heads-up only.
+  #
+  # TO CHANGE THE CADENCE: edit the minutes pattern below.
+  #   "/5"  = every 5 minutes,  "/2" = every 2 minutes, "/10" = every 10.
+  - id: bbq_alarm_reminder
+    alias: "BBQ: alarm reminder"
+    description: >-
+      Re-sends the alarm notification every 5 minutes while a probe remains
+      above its high target or below its low target (and alerts are armed).
+    mode: single
+    trigger:
+      - trigger: time_pattern
+        minutes: "/5"
+    action:
+      - repeat:
+          for_each: [1, 2, 3, 4, 5, 6]
+          sequence:
+            - variables:
+                probe: "{{ repeat.item }}"
+                is_high: "{{ is_state('binary_sensor.bbq_probe_' ~ probe ~ '_above_high', 'on') }}"
+                is_low: "{{ is_state('binary_sensor.bbq_probe_' ~ probe ~ '_below_low', 'on') }}"
+                armed: "{{ is_state('input_boolean.bbq_probe_' ~ probe ~ '_alerts', 'on') }}"
+            - if:
+                - condition: template
+                  value_template: "{{ armed and (is_high or is_low) }}"
+              then:
+                - variables:
+                    kind: "{{ 'high' if is_high else 'low' }}"
+                    probe_name: >-
+                      {% set n = states('input_text.bbq_probe_' ~ probe ~ '_name') | trim %}
+                      {{ n if n not in ['', 'unknown', 'unavailable'] else 'Probe ' ~ probe }}
+                    probe_sensors:
+                      1: sensor.kitchen_meat_thermometer_temperature_probe_1
+                      2: sensor.kitchen_meat_thermometer_temperature_probe_2
+                      3: sensor.kitchen_meat_thermometer_temperature_probe_3
+                      4: sensor.kitchen_meat_thermometer_temperature_probe_4
+                      5: sensor.kitchen_meat_thermometer_temperature_probe_5
+                      6: sensor.kitchen_meat_thermometer_temperature_probe_6
+                    temp: "{{ states(probe_sensors[probe]) | float(0) | round(1) }}"
+                    high_target: "{{ states('input_number.bbq_probe_' ~ probe ~ '_high') | float(0) | round(0) }}"
+                    low_target: "{{ states('input_number.bbq_probe_' ~ probe ~ '_low') | float(0) | round(0) }}"
+                    notify_title: >-
+                      {% if kind == 'high' %}
+                        🔥 {{ probe_name }} hit {{ temp }}°
+                      {% else %}
+                        🥶 {{ probe_name }} dropped to {{ temp }}°
+                      {% endif %}
+                    notify_message: >-
+                      {% if kind == 'high' %}
+                        Still {{ temp }}° — high target is {{ high_target }}°. (Reminder)
+                      {% else %}
+                        Still {{ temp }}° — low target is {{ low_target }}°. (Reminder)
+                      {% endif %}
+                - action: notify.bbq_alert_targets
+                  data:
+                    title: "{{ notify_title | trim }}"
+                    message: "{{ notify_message | trim }}"
+                    data:
+                      # Same tag as the original alarm -> replaces it.
+                      tag: "bbq-probe-{{ probe }}"
+                      channel: "BBQ Alarm"
+                      importance: high
+                      priority: high
+                      ttl: 0
+                      sticky: "true"
+                      actions:
+                        - action: "BBQ_PAUSE_{{ probe }}"
+                          title: "Pause alerts"
+                      push:
+                        sound:
+                          name: default
+                          critical: 1
+                          volume: 1.0
+                        interruption-level: time-sensitive
+
+  # --------------------------------------------------------------------------
+  # AUTOMATION 3 — "BBQ: pause from notification"
+  # --------------------------------------------------------------------------
+  # When you tap "Pause alerts" on a notification, the
+  # Companion app fires a mobile_app_notification_action event with the
+  # action string "BBQ_PAUSE_N". This automation parses N, disarms that
+  # probe's alerts, and sends a quiet confirmation so you know it worked.
+  - id: bbq_pause_from_notification
+    alias: "BBQ: pause from notification"
+    description: >-
+      Handles the "Pause alerts" notification button: turns off the probe's
+      alert toggle and confirms with a low-priority notification.
+    mode: queued
+    trigger:
+      - trigger: event
+        event_type: mobile_app_notification_action
+    condition:
+      - condition: template
+        value_template: "{{ trigger.event.data.action is defined and trigger.event.data.action.startswith('BBQ_PAUSE_') }}"
+    action:
+      - variables:
+          # "BBQ_PAUSE_3" -> 3
+          probe: "{{ trigger.event.data.action.split('_')[-1] | int }}"
+          probe_name: >-
+            {% set n = states('input_text.bbq_probe_' ~ probe ~ '_name') | trim %}
+            {{ n if n not in ['', 'unknown', 'unavailable'] else 'Probe ' ~ probe }}
+      - action: input_boolean.turn_off
+        target:
+          entity_id: "input_boolean.bbq_probe_{{ probe }}_alerts"
+      - action: notify.bbq_alert_targets
+        data:
+          title: "🔕 Alerts paused"
+          message: "Alerts paused for {{ probe_name }}. Re-arm from the BBQ card when ready."
+          data:
+            # Same tag: this quietly replaces the loud alarm notification.
+            tag: "bbq-probe-{{ probe }}"
+            channel: "BBQ Status"           # separate, quieter channel
+            importance: low
+            priority: normal
+
+
+# ============================================================================
+# NOTIFY GROUP — where alerts go
+# ============================================================================
+# A legacy notify "group" platform: one name (notify.bbq_alert_targets) that
+# fans out to every phone listed under services:. The automations above only
+# ever call notify.bbq_alert_targets, so adding a second phone is a one-line
+# change here — no automation edits needed.
+#
+# REQUIRED EDIT: replace mobile_app_YOUR_PHONE_HERE with your real service
+# name (see the checklist at the top of this file).
+#
+# To add a second phone, add another '- action:' line, e.g.:
+#   services:
+#     - action: mobile_app_your_phone
+#     - action: mobile_app_spouses_phone
+notify:
+  - platform: group
+    name: bbq_alert_targets
+    services:
+      - action: mobile_app_YOUR_PHONE_HERE

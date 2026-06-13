@@ -1,0 +1,40 @@
+# ============================================================================
+# configuration.yaml — what to add for the Govee H5055 BBQ package
+# ============================================================================
+# This is NOT a drop-in replacement for your configuration.yaml. It shows the
+# ONE block you need to add so Home Assistant loads packages from the
+# config/packages/ folder (where govee_bbq.yaml lives).
+#
+# HOW TO EDIT configuration.yaml FROM THE UI (no SSH/Samba needed):
+#   Settings > Add-ons > Add-on Store > install "File editor" (or
+#   "Studio Code Server" for a full editor). Open it from the sidebar, browse
+#   to /config/configuration.yaml, paste the block below, and Save.
+#   Then: Developer Tools > YAML > "Check configuration", and restart HA.
+# ============================================================================
+
+# If you do NOT already have a "homeassistant:" line, add this whole block:
+homeassistant:
+  packages: !include_dir_named packages
+
+# -- ALREADY have a "homeassistant:" block? --
+# Don't add a second one (duplicate keys break the config). Instead, add just
+# the one indented line under your existing block, e.g.:
+#
+#   homeassistant:
+#     name: Home
+#     unit_system: imperial          # <- your existing settings
+#     time_zone: America/New_York    # <- your existing settings
+#     packages: !include_dir_named packages   # <- ADD ONLY THIS LINE
+
+
+# ----------------------------------------------------------------------------
+# OPTIONAL: keep longer cook history for the graph card (README section 8).
+# By default HA's recorder keeps 10 days. If you don't already configure
+# recorder and want more probe history, you can add something like:
+#
+# recorder:
+#   purge_keep_days: 30
+#
+# (Leave this out if you already have a recorder: block — same duplicate-key
+# rule applies.)
+# ----------------------------------------------------------------------------
