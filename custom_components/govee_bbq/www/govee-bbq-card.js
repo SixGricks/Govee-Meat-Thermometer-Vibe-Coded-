@@ -237,7 +237,7 @@
       this._config = {};
       this._built = false;
       this._rows = [];
-      this._rowCount = -1;
+      this._rowKey = null;
       this._timer = null;
       this._modalUpdater = null;
     }
@@ -261,7 +261,7 @@
     setConfig(config) {
       this._config = config || {};
       this._built = false;
-      this._rowCount = -1;
+      this._rowKey = null;
       if (this._hass) {
         this._build();
         this._update();
@@ -319,7 +319,7 @@
       const root = this.shadowRoot;
       root.innerHTML = '';
       this._rows = [];
-      this._rowCount = -1;
+      this._rowKey = null;
       this._modalUpdater = null;
 
       const style = document.createElement('style');
@@ -418,11 +418,15 @@
         battery: hub.attributes.battery,
       };
 
-      if (probes.length !== this._rowCount) {
+      // Rebuild rows only when the set/order of probes changes (keyed by probe
+      // number, not just count) so a row is never re-bound to a different probe
+      // — which would otherwise leak one probe's pending edit onto another.
+      const rowKey = probes.map((p) => p.probe).join(',');
+      if (rowKey !== this._rowKey) {
         this._rowsHost.innerHTML = '';
         this._rows = [];
         for (let i = 0; i < probes.length; i++) this._rows.push(this._buildRow());
-        this._rowCount = probes.length;
+        this._rowKey = rowKey;
         if (probes.length === 0) {
           const msg =
             this._config.hide_unavailable && allProbes.length
@@ -648,6 +652,11 @@
         }
       });
       input.addEventListener('blur', () => {
+        // If a re-render removed this input, don't commit a half-typed name.
+        if (!input.isConnected) {
+          state.editingName = false;
+          return;
+        }
         if (!cancelled) finish(true);
       });
     }
@@ -791,6 +800,11 @@
           }
         });
         input.addEventListener('blur', () => {
+          // Torn down by a re-render: abandon the edit without committing.
+          if (!input.isConnected) {
+            s.editing = false;
+            return;
+          }
           if (!cancelled) finish(true);
         });
       });
@@ -1001,8 +1015,13 @@
       this._openModal((panel) => {
         card._modalHead(panel, 'Who gets notified');
         const entryId = card._hubAttr('entry_id', null);
-        const available = card._hubAttr('notify_available', []) || [];
-        const selected = new Set(card._hubAttr('notify_selected', []) || []);
+        const selectedList = card._hubAttr('notify_selected', []) || [];
+        const selected = new Set(selectedList);
+        // Union so a selected-but-currently-unregistered target still shows
+        // (and stays checked) instead of being silently dropped on save.
+        const available = Array.from(
+          new Set([...(card._hubAttr('notify_available', []) || []), ...selectedList])
+        ).sort();
 
         const body = el('div', 'modal-section');
         const checks = [];
@@ -1028,7 +1047,10 @@
             checks.push(cb);
           }
         }
-        panel.append(body);
+        const err = el('div', 'empty', '');
+        err.style.color = 'var(--error-color, #db4437)';
+        err.style.display = 'none';
+        panel.append(body, err);
 
         const actions = el('div', 'modal-actions');
         const cancel = el('button', 'btn ghost', 'Cancel');
@@ -1037,13 +1059,20 @@
         const save = el('button', 'btn primary', 'Save');
         save.type = 'button';
         save.disabled = !available.length || !entryId;
-        save.addEventListener('click', () => {
+        save.addEventListener('click', async () => {
           const chosen = checks.filter((c) => c.checked).map((c) => c.value);
-          card._hass.callService('govee_bbq', 'set_notify_services', {
-            entry_id: entryId,
-            notify_services: chosen,
-          });
-          card._closeModal();
+          save.disabled = true;
+          try {
+            await card._hass.callService('govee_bbq', 'set_notify_services', {
+              entry_id: entryId,
+              notify_services: chosen,
+            });
+            card._closeModal();
+          } catch (e) {
+            err.textContent = 'Could not save: ' + (e && e.message ? e.message : e);
+            err.style.display = '';
+            save.disabled = false;
+          }
         });
         actions.append(cancel, save);
         panel.append(actions);
@@ -1100,22 +1129,44 @@
         const save = el('button', 'btn primary', 'Save preset');
         save.type = 'button';
         save.disabled = !entryId;
-        save.addEventListener('click', () => {
+        const clamp = (v) => Math.min(600, Math.max(0, Number(v) || 0));
+        const showErr = (m) => {
+          err.textContent = m;
+          err.style.display = '';
+        };
+        save.addEventListener('click', async () => {
           const name = nameInput.value.trim();
           if (!name) {
-            err.textContent = 'Give the preset a name.';
-            err.style.display = '';
+            showErr('Give the preset a name.');
             nameInput.focus();
             return;
           }
-          card._hass.callService('govee_bbq', 'add_preset', {
-            entry_id: entryId,
-            name,
-            high: Number(highInput.value) || 0,
-            low: Number(lowInput.value) || 0,
-            category: catSel.value,
-          });
-          card._closeModal();
+          const high = clamp(highInput.value);
+          const low = clamp(lowInput.value);
+          highInput.value = String(high);
+          lowInput.value = String(low);
+          if (high === 0 && low === 0) {
+            showErr('Set a high and/or low target.');
+            return;
+          }
+          if (high > 0 && low > 0 && low >= high) {
+            showErr('Low target must be below the high target.');
+            return;
+          }
+          save.disabled = true;
+          try {
+            await card._hass.callService('govee_bbq', 'add_preset', {
+              entry_id: entryId,
+              name,
+              high,
+              low,
+              category: catSel.value,
+            });
+            card._closeModal();
+          } catch (e) {
+            showErr('Could not save preset: ' + (e && e.message ? e.message : e));
+            save.disabled = false;
+          }
         });
         actions.append(cancel, save);
         panel.append(actions);

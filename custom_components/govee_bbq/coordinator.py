@@ -162,7 +162,12 @@ class GoveeBBQCoordinator:
         return sorted(self.hass.services.async_services().get("notify", {}).keys())
 
     def _resolve_battery_entity(self) -> str | None:
-        """Find a battery sensor on the same device(s) as the probe sensors."""
+        """Find a battery sensor on the same device(s) as the probe sensors.
+
+        Prefer a sensor with device_class 'battery'; fall back to a percent
+        sensor whose id mentions battery (some BLE integrations leave the
+        device_class unset).
+        """
         if not self.probe_sensors:
             return None
         try:
@@ -172,6 +177,7 @@ class GoveeBBQCoordinator:
                 entry = ent_reg.async_get(sensor_id)
                 if entry and entry.device_id and entry.device_id not in device_ids:
                     device_ids.append(entry.device_id)
+            fallback: str | None = None
             for device_id in device_ids:
                 for entity in er.async_entries_for_device(
                     ent_reg, device_id, include_disabled_entities=False
@@ -180,6 +186,13 @@ class GoveeBBQCoordinator:
                         continue
                     if (entity.device_class or entity.original_device_class) == "battery":
                         return entity.entity_id
+                    if (
+                        fallback is None
+                        and entity.unit_of_measurement == "%"
+                        and "batt" in entity.entity_id.lower()
+                    ):
+                        fallback = entity.entity_id
+            return fallback
         except Exception as err:  # noqa: BLE001 - never let discovery break setup
             _LOGGER.debug("Govee BBQ: battery auto-discovery failed: %s", err)
         return None

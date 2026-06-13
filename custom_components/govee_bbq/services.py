@@ -58,6 +58,12 @@ _DELETE_PRESET_SCHEMA = vol.Schema(
 )
 
 
+def _whole(value: float) -> float | int:
+    """Return an int when the value is whole (165.0 -> 165), else the float."""
+    f = float(value)
+    return int(f) if f.is_integer() else f
+
+
 def _get_entry(hass: HomeAssistant, entry_id: str) -> ConfigEntry:
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry is None or entry.domain != DOMAIN:
@@ -99,8 +105,8 @@ def async_register_services(hass: HomeAssistant) -> None:
         presets.append(
             {
                 "name": name,
-                "high": call.data["high"],
-                "low": call.data["low"],
+                "high": _whole(call.data["high"]),
+                "low": _whole(call.data["low"]),
                 "category": category or DEFAULT_PRESET_CATEGORY,
             }
         )
