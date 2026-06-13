@@ -307,7 +307,8 @@
         const chosen = preset.value;
         preset.value = '';
         if (!chosen || !state.probe) return;
-        const list = (this._hubState().attributes.presets) || [];
+        const hub = this._hubState();
+        const list = hub && Array.isArray(hub.attributes.presets) ? hub.attributes.presets : [];
         const p = list.find((x) => x.name === chosen);
         if (!p) return;
         if (state.probe.high_entity && Number(p.high) > 0) {
@@ -453,6 +454,8 @@
         if (s.timer) window.clearTimeout(s.timer);
         s.timer = window.setTimeout(() => {
           s.pending = null;
+          s.timer = null;
+          if (!s.editing) display(s.value); // snap back to the real value
         }, 5000);
         display(v);
         if (s.entityId) card._hass.callService('number', 'set_value', { entity_id: s.entityId, value: v });
@@ -665,7 +668,7 @@
       name: 'Govee BBQ Card',
       description: 'Probe names, temperatures, targets, presets, and alert bells for the Govee BBQ Alarms integration.',
       preview: false,
-      documentationURL: 'https://github.com/YOUR_GH_USERNAME/govee-bbq-ha',
+      documentationURL: 'https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-',
     });
   }
 

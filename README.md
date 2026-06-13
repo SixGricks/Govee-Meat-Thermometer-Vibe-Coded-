@@ -1,6 +1,6 @@
 # Govee BBQ Alarms — Home Assistant integration
 
-[![hacs][hacs-badge]][hacs] [![Validate](https://github.com/YOUR_GH_USERNAME/govee-bbq-ha/actions/workflows/validate.yml/badge.svg)](https://github.com/YOUR_GH_USERNAME/govee-bbq-ha/actions/workflows/validate.yml)
+[![hacs][hacs-badge]][hacs] [![Validate](https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-/actions/workflows/validate.yml/badge.svg)](https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-/actions/workflows/validate.yml)
 
 Turn a Govee multi-probe BBQ thermometer (already in Home Assistant via the
 Govee BLE integration + a Bluetooth proxy) into a full alarm system — **named
@@ -53,7 +53,7 @@ it can't do is make the base station itself beep.
 ## Install (HACS)
 
 1. HACS → **⋮ (top right) → Custom repositories**.
-2. Repository: `https://github.com/YOUR_GH_USERNAME/govee-bbq-ha` · Category:
+2. Repository: `https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-` · Category:
    **Integration** → **Add**.
 3. Find **"Govee BBQ Alarms"** in HACS, click **Download**.
 4. **Restart Home Assistant.**
@@ -154,11 +154,13 @@ The earlier package-based approach (helpers + automations + a separate card)
 lives in [`legacy-yaml/`](legacy-yaml/) for reference. The integration replaces
 it entirely — you don't need both.
 
-## Before you publish this repo
+## Publishing
 
-Replace `YOUR_GH_USERNAME` (in `manifest.json`, `info.md`, the card, and this
-README) with your GitHub username, set the `LICENSE` holder, then push to a
-public repo named `govee-bbq-ha`.
+This repo is wired for `github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-`.
+Push it to that public repo, then add it to HACS as a custom repository (see
+**Install** above). The `.github/workflows/validate.yml` action runs hassfest +
+HACS validation on every push. Tag a release (e.g. `v1.0.0`) so HACS offers a
+versioned download.
 
 [hacs]: https://github.com/hacs/integration
 [hacs-badge]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg

@@ -56,9 +56,13 @@ class GoveeBBQCoordinator:
         self.hass = hass
         self.entry = entry
         self.probe_sensors: list[str] = list(entry.data.get(CONF_PROBES, []))
-        self.notify_services: list[str] = [
-            s.split(".", 1)[-1] for s in entry.data.get(CONF_NOTIFY_SERVICES, [])
-        ]
+        # notify_services live in options (editable from Configure); fall back
+        # to data for entries created by an earlier version. Strip any
+        # "notify." prefix so we can call hass.services.async_call("notify", x).
+        raw_notify = entry.options.get(
+            CONF_NOTIFY_SERVICES, entry.data.get(CONF_NOTIFY_SERVICES, [])
+        )
+        self.notify_services: list[str] = [s.split(".", 1)[-1] for s in raw_notify]
         # entity references, filled in by the platforms (keyed by 1-based probe)
         self.high: dict[int, Any] = {}
         self.low: dict[int, Any] = {}
@@ -212,6 +216,21 @@ class GoveeBBQCoordinator:
     def async_request_evaluate(self) -> None:
         self.hass.async_create_task(self.async_evaluate())
 
+    @callback
+    def async_notify_latched(self, probe: int) -> None:
+        """Immediately alert for an already-latched high/low on this probe.
+
+        Called when a probe is armed AFTER it has already crossed its target
+        (set a target, food is already done, then arm the bell) — otherwise the
+        first alert would wait for the next reminder tick.
+        """
+        if not self._is_armed(probe):
+            return
+        if (probe, "high") in self._latched:
+            self.hass.async_create_task(self._async_notify(probe, "high"))
+        elif (probe, "low") in self._latched:
+            self.hass.async_create_task(self._async_notify(probe, "low"))
+
     async def async_evaluate(self) -> None:
         """Recompute every probe's status, run debounce/notify, push snapshot."""
         offset = self.approach_offset
@@ -225,7 +244,7 @@ class GoveeBBQCoordinator:
             if available and temp is not None:
                 if high > 0 and temp >= high:
                     cond["high"] = True
-                if low > 0 and temp > 0 and temp <= low:
+                if low > 0 and temp <= low:
                     cond["low"] = True
                 if high > 0 and offset > 0 and (high - offset) <= temp < high:
                     cond["approach"] = True
@@ -271,7 +290,7 @@ class GoveeBBQCoordinator:
     ) -> str:
         if not available or temp is None:
             return STATUS_UNAVAILABLE
-        if low > 0 and temp > 0 and temp <= low:
+        if low > 0 and temp <= low:
             return STATUS_LOW
         if high > 0 and temp >= high:
             return STATUS_HIGH

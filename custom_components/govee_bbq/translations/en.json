@@ -29,10 +29,14 @@
     "step": {
       "init": {
         "title": "Govee BBQ options",
-        "description": "Adjust the reminder cadence and your presets.",
+        "description": "Choose which apps get notified, the reminder cadence, and your presets.",
         "data": {
+          "notify_services": "Notify service(s) — which apps/phones get alerts",
           "reminder_minutes": "Reminder interval (minutes)",
           "presets_text": "Presets — one per line: Name | high | low (use 0 for low to leave it unchanged)"
+        },
+        "data_description": {
+          "notify_services": "Pick from your installed Home Assistant Companion apps (mobile_app_*). Add or remove phones anytime here."
         }
       }
     }

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -42,6 +43,10 @@ class GoveeBBQHubSensor(SensorEntity):
     _attr_name = None  # take the device name (e.g. "Smoker")
     _attr_icon = "mdi:grill"
     _attr_should_poll = False
+    # The big nested probe snapshot is a live data carrier for the card only —
+    # keep it out of the recorder so it isn't serialized to the DB on every
+    # temperature change (the numeric state is still recorded for history).
+    _unrecorded_attributes = frozenset({MATCH_ALL})
 
     def __init__(self, coordinator: GoveeBBQCoordinator, entry: ConfigEntry) -> None:
         self.coordinator = coordinator

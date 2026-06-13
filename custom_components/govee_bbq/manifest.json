@@ -3,9 +3,9 @@
   "name": "Govee BBQ Alarms",
   "version": "1.0.0",
   "config_flow": true,
-  "documentation": "https://github.com/YOUR_GH_USERNAME/govee-bbq-ha",
-  "issue_tracker": "https://github.com/YOUR_GH_USERNAME/govee-bbq-ha/issues",
-  "codeowners": ["@YOUR_GH_USERNAME"],
+  "documentation": "https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-",
+  "issue_tracker": "https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-/issues",
+  "codeowners": ["@SixGricks"],
   "iot_class": "calculated",
   "integration_type": "hub",
   "after_dependencies": ["mobile_app"]

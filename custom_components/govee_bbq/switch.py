@@ -61,6 +61,9 @@ class GoveeBBQArmSwitch(SwitchEntity, RestoreEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         self._attr_is_on = True
         self.async_write_ha_state()
+        # If this probe already crossed its target while disarmed, alert now
+        # (state is written first so the coordinator sees us as armed).
+        self.coordinator.async_notify_latched(self._probe)
         self.coordinator.async_request_evaluate()
 
     async def async_turn_off(self, **kwargs: Any) -> None:

@@ -86,9 +86,11 @@ class GoveeBBQConfigFlow(ConfigFlow, domain=DOMAIN):
                     data={
                         CONF_NAME: name,
                         CONF_PROBES: probes,
-                        CONF_NOTIFY_SERVICES: notify,
                     },
+                    # notify_services lives in OPTIONS so it can be changed
+                    # later from Configure (a dropdown), not just at setup.
                     options={
+                        CONF_NOTIFY_SERVICES: notify,
                         CONF_APPROACH_OFFSET: user_input.get(
                             CONF_APPROACH_OFFSET, DEFAULT_APPROACH_OFFSET
                         ),
@@ -150,6 +152,7 @@ class GoveeBBQOptionsFlow(OptionsFlow):
             return self.async_create_entry(
                 title="",
                 data={
+                    CONF_NOTIFY_SERVICES: user_input.get(CONF_NOTIFY_SERVICES, []),
                     CONF_REMINDER_MINUTES: int(
                         user_input.get(CONF_REMINDER_MINUTES, DEFAULT_REMINDER_MINUTES)
                     ),
@@ -160,12 +163,30 @@ class GoveeBBQOptionsFlow(OptionsFlow):
                 },
             )
 
+        current_notify = options.get(
+            CONF_NOTIFY_SERVICES, self._entry.data.get(CONF_NOTIFY_SERVICES, [])
+        )
+        # Live notify services plus any currently-selected ones (so a phone
+        # that is briefly offline still shows up as selected).
+        notify_choices = sorted(set(_notify_options(self.hass)) | set(current_notify))
+        notify_choices.sort(key=lambda name: (0 if name.startswith("mobile_app_") else 1, name))
+
         current_presets = options.get(CONF_PRESETS, DEFAULT_PRESETS)
         presets_text = "\n".join(
             f"{p['name']} | {p.get('high', 0)} | {p.get('low', 0)}" for p in current_presets
         )
         schema = vol.Schema(
             {
+                vol.Optional(
+                    CONF_NOTIFY_SERVICES, default=current_notify
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=notify_choices,
+                        multiple=True,
+                        custom_value=True,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Optional(
                     CONF_REMINDER_MINUTES,
                     default=options.get(CONF_REMINDER_MINUTES, DEFAULT_REMINDER_MINUTES),

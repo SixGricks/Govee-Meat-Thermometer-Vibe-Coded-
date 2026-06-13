@@ -13,5 +13,5 @@ and a dashboard card to drive it all.
 3. Pick your probe temperature sensors and the phone(s) to notify.
 4. Add the **Govee BBQ Card** to a dashboard (it auto-detects your device).
 
-See the [README](https://github.com/YOUR_GH_USERNAME/govee-bbq-ha) for full
+See the [README](https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-) for full
 details.
