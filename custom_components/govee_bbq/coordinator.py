@@ -14,6 +14,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
@@ -29,10 +30,12 @@ from .const import (
     CONF_PROBES,
     CONF_REMINDER_MINUTES,
     DEFAULT_DEBOUNCE_SECONDS,
+    DEFAULT_PRESET_CATEGORY,
     DEFAULT_PRESETS,
     DEFAULT_REMINDER_MINUTES,
     NOTIFICATION_ACTION_EVENT,
     NOTIFY_TAG_PREFIX,
+    PRESET_CATEGORIES,
     PAUSE_ACTION_PREFIX,
     STATUS_APPROACH,
     STATUS_HIGH,
@@ -69,6 +72,9 @@ class GoveeBBQCoordinator:
         self.arm: dict[int, Any] = {}
         self.names: dict[int, Any] = {}
         self.approach_entity: Any = None
+        # battery sensor belonging to the same device as the probes (resolved
+        # once at setup from the entity/device registry — may be None).
+        self.battery_entity: str | None = None
         # debounce + latch state, keyed (probe, kind)
         self._cond_since: dict[tuple[int, str], float] = {}
         self._latched: set[tuple[int, str]] = set()
@@ -86,6 +92,14 @@ class GoveeBBQCoordinator:
             self._unsubs.append(
                 async_track_state_change_event(
                     self.hass, self.probe_sensors, self._handle_temp_change
+                )
+            )
+        # Auto-discover the device battery so the card can show it (opt-in).
+        self.battery_entity = self._resolve_battery_entity()
+        if self.battery_entity:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass, [self.battery_entity], self._handle_temp_change
                 )
             )
         self._unsubs.append(
@@ -121,7 +135,67 @@ class GoveeBBQCoordinator:
 
     @property
     def presets(self) -> list[dict]:
-        return self._options().get(CONF_PRESETS, DEFAULT_PRESETS)
+        """Stored presets, each normalized to name/high/low/category."""
+        raw = self._options().get(CONF_PRESETS, DEFAULT_PRESETS)
+        out: list[dict] = []
+        for preset in raw:
+            try:
+                high = float(preset.get("high", 0) or 0)
+            except (TypeError, ValueError):
+                high = 0.0
+            try:
+                low = float(preset.get("low", 0) or 0)
+            except (TypeError, ValueError):
+                low = 0.0
+            out.append(
+                {
+                    "name": str(preset.get("name", "")).strip(),
+                    "high": high,
+                    "low": low,
+                    "category": (preset.get("category") or DEFAULT_PRESET_CATEGORY),
+                }
+            )
+        return out
+
+    def notify_available(self) -> list[str]:
+        """All notify service names currently registered (no 'notify.' prefix)."""
+        return sorted(self.hass.services.async_services().get("notify", {}).keys())
+
+    def _resolve_battery_entity(self) -> str | None:
+        """Find a battery sensor on the same device(s) as the probe sensors."""
+        if not self.probe_sensors:
+            return None
+        try:
+            ent_reg = er.async_get(self.hass)
+            device_ids: list[str] = []
+            for sensor_id in self.probe_sensors:
+                entry = ent_reg.async_get(sensor_id)
+                if entry and entry.device_id and entry.device_id not in device_ids:
+                    device_ids.append(entry.device_id)
+            for device_id in device_ids:
+                for entity in er.async_entries_for_device(
+                    ent_reg, device_id, include_disabled_entities=False
+                ):
+                    if entity.domain != "sensor":
+                        continue
+                    if (entity.device_class or entity.original_device_class) == "battery":
+                        return entity.entity_id
+        except Exception as err:  # noqa: BLE001 - never let discovery break setup
+            _LOGGER.debug("Govee BBQ: battery auto-discovery failed: %s", err)
+        return None
+
+    @property
+    def battery_level(self) -> int | None:
+        """Current device battery percent, or None if unknown/unavailable."""
+        if not self.battery_entity:
+            return None
+        state = self.hass.states.get(self.battery_entity)
+        if state is None or state.state in ("unknown", "unavailable", "", None):
+            return None
+        try:
+            return int(round(float(state.state)))
+        except (TypeError, ValueError):
+            return None
 
     @property
     def reminder_minutes(self) -> int:
@@ -278,9 +352,14 @@ class GoveeBBQCoordinator:
         self.data = {
             "probes": probes,
             "presets": self.presets,
+            "preset_categories": PRESET_CATEGORIES,
             "approach_offset": offset,
             "approach_offset_entity": self._eid(self.approach_entity),
             "alarm_count": sum(1 for p in probes if p["status"] in (STATUS_HIGH, STATUS_LOW)),
+            "battery": self.battery_level,
+            "battery_entity": self.battery_entity,
+            "notify_selected": list(self.notify_services),
+            "notify_available": self.notify_available(),
         }
         async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
 

@@ -1,7 +1,7 @@
 {
   "domain": "govee_bbq",
   "name": "Govee BBQ Alarms",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "config_flow": true,
   "documentation": "https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-",
   "issue_tracker": "https://github.com/SixGricks/Govee-Meat-Thermometer-Vibe-Coded-/issues",

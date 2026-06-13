@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import CARD_FILENAME, CARD_URL, DOMAIN, PLATFORMS
 from .coordinator import GoveeBBQCoordinator
+from .services import async_register_services, async_unregister_services
 
 _LOGGER = logging.getLogger(__name__)
 _CARD_REGISTERED = False
@@ -19,6 +20,7 @@ _CARD_REGISTERED = False
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Govee BBQ Alarms from a config entry."""
     await _async_register_card(hass)
+    async_register_services(hass)
 
     coordinator = GoveeBBQCoordinator(hass, entry)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
@@ -40,6 +42,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         coordinator: GoveeBBQCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         coordinator.async_unload()
+        # Drop the shared services once the last BBQ device is gone.
+        if not hass.data.get(DOMAIN):
+            async_unregister_services(hass)
     return unload_ok
 
 

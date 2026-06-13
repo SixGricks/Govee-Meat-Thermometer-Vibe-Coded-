@@ -33,10 +33,66 @@
         "data": {
           "notify_services": "Notify service(s) — which apps/phones get alerts",
           "reminder_minutes": "Reminder interval (minutes)",
-          "presets_text": "Presets — one per line: Name | high | low (use 0 for low to leave it unchanged)"
+          "presets_text": "Presets — one per line: Name | high | low | category (low 0 = leave unchanged; category is one of Beef, Poultry, Fish, Pork, Other)"
         },
         "data_description": {
           "notify_services": "Pick from your installed Home Assistant Companion apps (mobile_app_*). Add or remove phones anytime here."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_notify_services": {
+      "name": "Set notify targets",
+      "description": "Choose which notify services receive this BBQ device's alerts.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The Govee BBQ device's config entry id (the card fills this in for you)."
+        },
+        "notify_services": {
+          "name": "Notify services",
+          "description": "List of notify service names that should receive alerts (without the notify. prefix)."
+        }
+      }
+    },
+    "add_preset": {
+      "name": "Add preset",
+      "description": "Create or replace a target preset and assign it to a food category.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The Govee BBQ device's config entry id (the card fills this in for you)."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Preset name, e.g. 'Turkey (165)'. Reusing a name replaces that preset."
+        },
+        "high": {
+          "name": "High target",
+          "description": "High target temperature (0 leaves the high target unchanged when applied)."
+        },
+        "low": {
+          "name": "Low target",
+          "description": "Low target temperature (0 leaves the low target unchanged when applied)."
+        },
+        "category": {
+          "name": "Category",
+          "description": "Food category: Beef, Poultry, Fish, Pork, or Other."
+        }
+      }
+    },
+    "delete_preset": {
+      "name": "Delete preset",
+      "description": "Remove a target preset by name.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The Govee BBQ device's config entry id (the card fills this in for you)."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Name of the preset to remove."
         }
       }
     }

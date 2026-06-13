@@ -37,10 +37,15 @@ it can't do is make the base station itself beep.
   5 minutes while a probe stays past target.
 - **Approaching-target pre-alert** — one heads-up a configurable number of
   degrees before the high target.
-- **Presets** — Chicken / Ribs / Brisket out of the box; add your own in the
-  options.
-- **Dashboard card** with live temps, steppers, arming bells, presets, and
-  status colors — bundled and auto-registered (no manual resource).
+- **Presets** — Chicken / Ribs / Brisket out of the box, grouped into food
+  **categories** (Beef, Poultry, Fish, Pork, Other). Create new presets right
+  from the card.
+- **Dashboard card** — each probe is its own mini-card with a large **current
+  temperature** and an **alarm preset** summary. Tap a probe for a details
+  popup (rename, targets, arm, presets), or use the inline **Edit alarm**
+  dropdown. Optional **battery** readout, a toggle to **hide unavailable
+  probes**, and a **Notifications** pill to choose which phones get alerts —
+  all bundled and auto-registered (no manual resource).
 - **Unit-agnostic** — follows whatever unit your probe sensors report.
 
 ## Requirements
@@ -79,8 +84,9 @@ step.</sub>
 ## Add the card
 
 Edit a dashboard → **Add card** → search **"Govee BBQ"**. It **auto-detects**
-your device — just set an optional title. (Multiple BBQ devices? Pick which one
-in the card's visual editor.)
+your device — just set an optional title. The visual editor also has toggles to
+**hide unavailable probes** and **show battery level**. (Multiple BBQ devices?
+Pick which one in the editor.)
 
 <details><summary>YAML config (optional)</summary>
 
@@ -88,17 +94,31 @@ in the card's visual editor.)
 type: custom:govee-bbq-card
 title: Smoker
 # entity: sensor.smoker   # optional — omit to auto-detect
+# hide_unavailable: true  # hide probes with no live signal
+# show_battery: true      # show the device battery on each probe
 ```
 </details>
 
 ## Using it
 
-- **Rename a probe** — tap its name on the card.
-- **Set targets** — the `−`/`+` steppers or tap the number to type one. **`0`
-  = that alarm off.** Most cooks only need a high target.
+- **Rename a probe** — tap its name on the card (or open the probe's details
+  popup and edit the name there).
+- **Probe details popup** — tap a probe's temperature/alarm area to open a popup
+  with everything: rename, targets, arm toggle, and the preset picker.
+- **Set targets** — open **Edit alarm** (or the details popup) and use the
+  `−`/`+` steppers, or tap the number to type one. **`0` = that alarm off.**
+  Most cooks only need a high target.
 - **Arm the bell** — no bell, no notification. Targets still show on the card
   while disarmed.
-- **Presets** — pick one from a probe's dropdown to fill its target(s).
+- **Presets** — pick one from the **Edit alarm** dropdown (grouped by category).
+  Use the **New preset** pill to add your own and file it under Beef, Poultry,
+  Fish, Pork, or Other.
+- **Notifications** — the **Notifications** pill at the bottom lets you tick
+  which phones/apps receive this device's alerts.
+- **Battery** — enable **Show battery level** in the card editor to show the
+  device battery on each probe.
+- **Hide unavailable** — enable **Hide unavailable probes** in the card editor
+  to drop probes that have no live signal.
 - **Approaching alert** — set the offset in the card footer (e.g. `10` → an
   armed probe targeting 203° pings you once at 193°).
 - **The notification** — "🔥 Brisket flat hit 203°" on the BBQ Alarm channel,
@@ -110,8 +130,10 @@ title: Smoker
 **Settings → Devices & Services → Govee BBQ Alarms → Configure**:
 
 - **Reminder interval** (minutes).
-- **Presets** — one per line, `Name | high | low` (use `0` for low to leave it
-  alone), e.g. `Turkey (165) | 165 | 0`.
+- **Presets** — one per line, `Name | high | low | category` (use `0` for low to
+  leave it alone; category is Beef/Poultry/Fish/Pork/Other), e.g.
+  `Turkey (165) | 165 | 0 | Poultry`. You can also add presets straight from the
+  card with the **New preset** pill.
 
 ## Entities created
 

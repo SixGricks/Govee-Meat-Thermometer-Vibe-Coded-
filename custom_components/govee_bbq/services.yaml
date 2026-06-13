@@ -1,0 +1,65 @@
+set_notify_services:
+  fields:
+    entry_id:
+      required: true
+      example: "1a2b3c4d5e6f"
+      selector:
+        text:
+    notify_services:
+      required: true
+      example: "[mobile_app_pixel_9, mobile_app_iphone]"
+      selector:
+        object:
+
+add_preset:
+  fields:
+    entry_id:
+      required: true
+      example: "1a2b3c4d5e6f"
+      selector:
+        text:
+    name:
+      required: true
+      example: "Turkey (165)"
+      selector:
+        text:
+    high:
+      example: 165
+      selector:
+        number:
+          min: 0
+          max: 600
+          step: 1
+          mode: box
+    low:
+      example: 0
+      selector:
+        number:
+          min: 0
+          max: 600
+          step: 1
+          mode: box
+    category:
+      example: "Poultry"
+      selector:
+        select:
+          custom_value: true
+          options:
+            - "Beef"
+            - "Poultry"
+            - "Fish"
+            - "Pork"
+            - "Other"
+
+delete_preset:
+  fields:
+    entry_id:
+      required: true
+      example: "1a2b3c4d5e6f"
+      selector:
+        text:
+    name:
+      required: true
+      example: "Turkey (165)"
+      selector:
+        text:

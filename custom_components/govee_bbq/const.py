@@ -27,12 +27,23 @@ TARGET_STEP = 1
 OFFSET_MIN = 0
 OFFSET_MAX = 50
 
+# --- presets ---
+# Presets group into food categories so the card can organize the picker.
+PRESET_CATEGORIES = ["Beef", "Poultry", "Fish", "Pork", "Other"]
+DEFAULT_PRESET_CATEGORY = "Other"
+
 # Default presets: low 0 means "leave the probe's low target alone".
 DEFAULT_PRESETS = [
-    {"name": "Chicken (165)", "high": 165, "low": 0},
-    {"name": "Pork ribs (195)", "high": 195, "low": 0},
-    {"name": "Brisket (203)", "high": 203, "low": 0},
+    {"name": "Chicken (165)", "high": 165, "low": 0, "category": "Poultry"},
+    {"name": "Pork ribs (195)", "high": 195, "low": 0, "category": "Pork"},
+    {"name": "Brisket (203)", "high": 203, "low": 0, "category": "Beef"},
 ]
+
+# --- services (called by the card to edit options without the UI flow) ---
+SERVICE_SET_NOTIFY_SERVICES = "set_notify_services"
+SERVICE_ADD_PRESET = "add_preset"
+SERVICE_DELETE_PRESET = "delete_preset"
+ATTR_ENTRY_ID = "entry_id"
 
 # --- notifications ---
 NOTIFY_TAG_PREFIX = "bbq-probe-"

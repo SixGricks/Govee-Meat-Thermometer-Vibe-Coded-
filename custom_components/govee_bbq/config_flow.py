@@ -22,6 +22,7 @@ from .const import (
     CONF_REMINDER_MINUTES,
     DEFAULT_APPROACH_OFFSET,
     DEFAULT_NAME,
+    DEFAULT_PRESET_CATEGORY,
     DEFAULT_PRESETS,
     DEFAULT_REMINDER_MINUTES,
     DOMAIN,
@@ -39,7 +40,7 @@ def _notify_options(hass) -> list[str]:
 
 
 def _parse_presets(text: str) -> list[dict]:
-    """Parse 'Name | high | low' lines into preset dicts."""
+    """Parse 'Name | high | low | category' lines into preset dicts."""
     presets: list[dict] = []
     for raw in (text or "").splitlines():
         line = raw.strip()
@@ -57,7 +58,10 @@ def _parse_presets(text: str) -> list[dict]:
             low = float(parts[2]) if len(parts) > 2 and parts[2] else 0
         except ValueError:
             low = 0
-        presets.append({"name": name, "high": high, "low": low})
+        category = parts[3] if len(parts) > 3 and parts[3] else DEFAULT_PRESET_CATEGORY
+        presets.append(
+            {"name": name, "high": high, "low": low, "category": category}
+        )
     return presets
 
 
@@ -173,7 +177,9 @@ class GoveeBBQOptionsFlow(OptionsFlow):
 
         current_presets = options.get(CONF_PRESETS, DEFAULT_PRESETS)
         presets_text = "\n".join(
-            f"{p['name']} | {p.get('high', 0)} | {p.get('low', 0)}" for p in current_presets
+            f"{p['name']} | {p.get('high', 0)} | {p.get('low', 0)} | "
+            f"{p.get('category', DEFAULT_PRESET_CATEGORY)}"
+            for p in current_presets
         )
         schema = vol.Schema(
             {
