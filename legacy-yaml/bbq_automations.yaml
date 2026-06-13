@@ -1,0 +1,340 @@
+# ============================================================================
+# GOVEE BBQ — ALARM AUTOMATIONS (import these into the HA UI)
+# ============================================================================
+# These are the three alarm automations, pulled OUT of govee_bbq.yaml so they
+# become fully editable in Home Assistant's visual automation editor.
+# (Automations defined inside a package are read-only in the UI; UI-imported
+# ones are not.)
+#
+# They depend on the helpers, binary sensors, preset script, and notify group
+# in govee_bbq.yaml — so install that package FIRST and restart, then import.
+#
+# ----------------------------------------------------------------------------
+# HOW TO IMPORT (do this once per block — there are 3):
+#   1. Settings > Automations & Scenes > "+ Create Automation".
+#   2. "Create new automation" > "Skip" (start with an empty automation).
+#   3. Top-right ⋮ menu > "Edit in YAML".
+#   4. Select everything in the box, delete it, and paste ONE block below
+#      (everything between a "PASTE BLOCK N" banner and the next banner).
+#   5. ⋮ menu > "Save", or the Save button. The name fills in automatically.
+#   6. Repeat for blocks 2 and 3.
+#
+# After importing, all three appear in Settings > Automations and you can edit
+# them in the visual editor (change messages, the 5-minute cadence, disable a
+# trigger, etc.). You can delete THIS file afterward — HA has its own copy.
+#
+# NOTE: this is a copy-paste SOURCE, not a config file. Don't add it to
+# configuration.yaml or `!include` it — the three blocks are separate YAML
+# documents (split by `---`) meant for the UI importer above.
+# ============================================================================
+
+
+# ============================================================================
+# ▼▼▼ PASTE BLOCK 1 OF 3 — "BBQ: probe alarm" ▼▼▼
+# ----------------------------------------------------------------------------
+# Fires the moment any threshold sensor flips on. The trigger id encodes which
+# probe and which kind of alarm ("1_high", "4_approach", ...) so one automation
+# handles all 18 sensors. mode: parallel lets several probes alarm at once.
+# Every trigger uses from: "off" so a brief Bluetooth dropout (sensor flips to
+# 'unavailable' and back) doesn't re-fire the loud alarm; any crossing missed
+# that way is still caught within 5 minutes by block 2.
+# ----------------------------------------------------------------------------
+id: bbq_probe_alarm
+alias: "BBQ: probe alarm"
+description: >-
+  Sends a push notification when a probe crosses its high target, drops
+  below its low target, or approaches its high target. Only fires if that
+  probe's alerts are armed.
+mode: parallel
+max: 18
+triggers:
+  # ----- Above-high triggers -----
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_1_above_high
+    from: "off"
+    to: "on"
+    id: "1_high"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_2_above_high
+    from: "off"
+    to: "on"
+    id: "2_high"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_3_above_high
+    from: "off"
+    to: "on"
+    id: "3_high"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_4_above_high
+    from: "off"
+    to: "on"
+    id: "4_high"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_5_above_high
+    from: "off"
+    to: "on"
+    id: "5_high"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_6_above_high
+    from: "off"
+    to: "on"
+    id: "6_high"
+  # ----- Below-low triggers -----
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_1_below_low
+    from: "off"
+    to: "on"
+    id: "1_low"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_2_below_low
+    from: "off"
+    to: "on"
+    id: "2_low"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_3_below_low
+    from: "off"
+    to: "on"
+    id: "3_low"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_4_below_low
+    from: "off"
+    to: "on"
+    id: "4_low"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_5_below_low
+    from: "off"
+    to: "on"
+    id: "5_low"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_6_below_low
+    from: "off"
+    to: "on"
+    id: "6_low"
+  # ----- Approaching-high triggers -----
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_1_approaching_high
+    from: "off"
+    to: "on"
+    id: "1_approach"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_2_approaching_high
+    from: "off"
+    to: "on"
+    id: "2_approach"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_3_approaching_high
+    from: "off"
+    to: "on"
+    id: "3_approach"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_4_approaching_high
+    from: "off"
+    to: "on"
+    id: "4_approach"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_5_approaching_high
+    from: "off"
+    to: "on"
+    id: "5_approach"
+  - trigger: state
+    entity_id: binary_sensor.bbq_probe_6_approaching_high
+    from: "off"
+    to: "on"
+    id: "6_approach"
+conditions:
+  # Arming check: parse the probe number out of the trigger id
+  # ("3_high" -> "3") and require that probe's alerts to be on.
+  - condition: template
+    value_template: >-
+      {{ is_state('input_boolean.bbq_probe_' ~ trigger.id.split('_')[0] ~ '_alerts', 'on') }}
+actions:
+  - variables:
+      # "3_approach" -> probe = 3, kind = "approach"
+      probe: "{{ trigger.id.split('_')[0] | int }}"
+      kind: "{{ trigger.id.split('_')[1] }}"
+      # Friendly name, falling back to "Probe N" if the helper is empty
+      # or has never been set (state 'unknown').
+      probe_name: >-
+        {% set n = states('input_text.bbq_probe_' ~ probe ~ '_name') | trim %}
+        {{ n if n not in ['', 'unknown', 'unavailable'] else 'Probe ' ~ probe }}
+      # Current temperature for this probe.
+      probe_sensors:
+        1: sensor.kitchen_meat_thermometer_temperature_probe_1
+        2: sensor.kitchen_meat_thermometer_temperature_probe_2
+        3: sensor.kitchen_meat_thermometer_temperature_probe_3
+        4: sensor.kitchen_meat_thermometer_temperature_probe_4
+        5: sensor.kitchen_meat_thermometer_temperature_probe_5
+        6: sensor.kitchen_meat_thermometer_temperature_probe_6
+      temp: "{{ states(probe_sensors[probe]) | float(0) | round(1) }}"
+      high_target: "{{ states('input_number.bbq_probe_' ~ probe ~ '_high') | float(0) | round(0) }}"
+      low_target: "{{ states('input_number.bbq_probe_' ~ probe ~ '_low') | float(0) | round(0) }}"
+      notify_title: >-
+        {% if kind == 'high' %}
+          🔥 {{ probe_name }} hit {{ temp }}°
+        {% elif kind == 'low' %}
+          🥶 {{ probe_name }} dropped to {{ temp }}°
+        {% else %}
+          ⏰ {{ probe_name }} approaching target
+        {% endif %}
+      notify_message: >-
+        {% if kind == 'high' %}
+          Now {{ temp }}° — high target is {{ high_target }}°.
+        {% elif kind == 'low' %}
+          Now {{ temp }}° — low target is {{ low_target }}°.
+        {% else %}
+          Now {{ temp }}° — high target is {{ high_target }}° ({{ (high_target - temp) | round(1) }}° to go).
+        {% endif %}
+  - action: notify.bbq_alert_targets
+    data:
+      title: "{{ notify_title | trim }}"
+      message: "{{ notify_message | trim }}"
+      data:
+        # tag makes repeat notifications for the same probe REPLACE the
+        # previous one instead of stacking up in the notification shade.
+        tag: "bbq-probe-{{ probe }}"
+        # ----- Android keys -----
+        channel: "BBQ Alarm"           # own channel -> own sound/vibration settings
+        importance: high
+        priority: high
+        ttl: 0                          # deliver immediately, don't batch
+        sticky: "true"                  # tapping doesn't dismiss it
+        actions:
+          - action: "BBQ_PAUSE_{{ probe }}"
+            title: "Pause alerts"
+        # ----- iOS keys (harmless on Android) -----
+        push:
+          sound:
+            name: default
+            critical: 1
+            volume: 1.0
+          interruption-level: time-sensitive
+# ▲▲▲ END BLOCK 1 OF 3 ▲▲▲
+# ============================================================================
+
+---
+
+# ============================================================================
+# ▼▼▼ PASTE BLOCK 2 OF 3 — "BBQ: alarm reminder" ▼▼▼
+# ----------------------------------------------------------------------------
+# While a probe is STILL above high (or below low) and still armed, re-send the
+# notification every 5 minutes so you can't miss it. Same tag => the reminder
+# REPLACES the previous notification rather than piling up. "Approaching"
+# alerts deliberately do NOT repeat.
+# TO CHANGE THE CADENCE: edit the minutes pattern ("/5" = every 5 min).
+# ----------------------------------------------------------------------------
+id: bbq_alarm_reminder
+alias: "BBQ: alarm reminder"
+description: >-
+  Re-sends the alarm notification every 5 minutes while a probe remains
+  above its high target or below its low target (and alerts are armed).
+mode: single
+triggers:
+  - trigger: time_pattern
+    minutes: "/5"
+actions:
+  - repeat:
+      for_each: [1, 2, 3, 4, 5, 6]
+      sequence:
+        - variables:
+            probe: "{{ repeat.item }}"
+            is_high: "{{ is_state('binary_sensor.bbq_probe_' ~ probe ~ '_above_high', 'on') }}"
+            is_low: "{{ is_state('binary_sensor.bbq_probe_' ~ probe ~ '_below_low', 'on') }}"
+            armed: "{{ is_state('input_boolean.bbq_probe_' ~ probe ~ '_alerts', 'on') }}"
+        - if:
+            - condition: template
+              value_template: "{{ armed and (is_high or is_low) }}"
+          then:
+            - variables:
+                kind: "{{ 'high' if is_high else 'low' }}"
+                probe_name: >-
+                  {% set n = states('input_text.bbq_probe_' ~ probe ~ '_name') | trim %}
+                  {{ n if n not in ['', 'unknown', 'unavailable'] else 'Probe ' ~ probe }}
+                probe_sensors:
+                  1: sensor.kitchen_meat_thermometer_temperature_probe_1
+                  2: sensor.kitchen_meat_thermometer_temperature_probe_2
+                  3: sensor.kitchen_meat_thermometer_temperature_probe_3
+                  4: sensor.kitchen_meat_thermometer_temperature_probe_4
+                  5: sensor.kitchen_meat_thermometer_temperature_probe_5
+                  6: sensor.kitchen_meat_thermometer_temperature_probe_6
+                temp: "{{ states(probe_sensors[probe]) | float(0) | round(1) }}"
+                high_target: "{{ states('input_number.bbq_probe_' ~ probe ~ '_high') | float(0) | round(0) }}"
+                low_target: "{{ states('input_number.bbq_probe_' ~ probe ~ '_low') | float(0) | round(0) }}"
+                notify_title: >-
+                  {% if kind == 'high' %}
+                    🔥 {{ probe_name }} hit {{ temp }}°
+                  {% else %}
+                    🥶 {{ probe_name }} dropped to {{ temp }}°
+                  {% endif %}
+                notify_message: >-
+                  {% if kind == 'high' %}
+                    Still {{ temp }}° — high target is {{ high_target }}°. (Reminder)
+                  {% else %}
+                    Still {{ temp }}° — low target is {{ low_target }}°. (Reminder)
+                  {% endif %}
+            - action: notify.bbq_alert_targets
+              data:
+                title: "{{ notify_title | trim }}"
+                message: "{{ notify_message | trim }}"
+                data:
+                  # Same tag as the original alarm -> replaces it.
+                  tag: "bbq-probe-{{ probe }}"
+                  channel: "BBQ Alarm"
+                  importance: high
+                  priority: high
+                  ttl: 0
+                  sticky: "true"
+                  actions:
+                    - action: "BBQ_PAUSE_{{ probe }}"
+                      title: "Pause alerts"
+                  push:
+                    sound:
+                      name: default
+                      critical: 1
+                      volume: 1.0
+                    interruption-level: time-sensitive
+# ▲▲▲ END BLOCK 2 OF 3 ▲▲▲
+# ============================================================================
+
+---
+
+# ============================================================================
+# ▼▼▼ PASTE BLOCK 3 OF 3 — "BBQ: pause from notification" ▼▼▼
+# ----------------------------------------------------------------------------
+# When you tap "Pause alerts" on a notification, the Companion app fires a
+# mobile_app_notification_action event with action "BBQ_PAUSE_N". This parses
+# N, disarms that probe's alerts, and sends a quiet confirmation.
+# ----------------------------------------------------------------------------
+id: bbq_pause_from_notification
+alias: "BBQ: pause from notification"
+description: >-
+  Handles the "Pause alerts" notification button: turns off the probe's
+  alert toggle and confirms with a low-priority notification.
+mode: queued
+triggers:
+  - trigger: event
+    event_type: mobile_app_notification_action
+conditions:
+  - condition: template
+    value_template: "{{ trigger.event.data.action is defined and trigger.event.data.action.startswith('BBQ_PAUSE_') }}"
+actions:
+  - variables:
+      # "BBQ_PAUSE_3" -> 3
+      probe: "{{ trigger.event.data.action.split('_')[-1] | int }}"
+      probe_name: >-
+        {% set n = states('input_text.bbq_probe_' ~ probe ~ '_name') | trim %}
+        {{ n if n not in ['', 'unknown', 'unavailable'] else 'Probe ' ~ probe }}
+  - action: input_boolean.turn_off
+    target:
+      entity_id: "input_boolean.bbq_probe_{{ probe }}_alerts"
+  - action: notify.bbq_alert_targets
+    data:
+      title: "🔕 Alerts paused"
+      message: "Alerts paused for {{ probe_name }}. Re-arm from the BBQ card when ready."
+      data:
+        # Same tag: this quietly replaces the loud alarm notification.
+        tag: "bbq-probe-{{ probe }}"
+        channel: "BBQ Status"           # separate, quieter channel
+        importance: low
+        priority: normal
+# ▲▲▲ END BLOCK 3 OF 3 ▲▲▲
+# ============================================================================

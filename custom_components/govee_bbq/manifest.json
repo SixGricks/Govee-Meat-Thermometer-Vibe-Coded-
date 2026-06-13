@@ -1,0 +1,12 @@
+{
+  "domain": "govee_bbq",
+  "name": "Govee BBQ Alarms",
+  "version": "1.0.0",
+  "config_flow": true,
+  "documentation": "https://github.com/YOUR_GH_USERNAME/govee-bbq-ha",
+  "issue_tracker": "https://github.com/YOUR_GH_USERNAME/govee-bbq-ha/issues",
+  "codeowners": ["@YOUR_GH_USERNAME"],
+  "iot_class": "calculated",
+  "integration_type": "hub",
+  "after_dependencies": ["mobile_app"]
+}

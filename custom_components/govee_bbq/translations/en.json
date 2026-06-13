@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Govee BBQ Alarms",
+        "description": "Pick your probe temperature sensors and the phone(s) to notify. No YAML required — everything else is created for you.",
+        "data": {
+          "name": "Name (e.g. Smoker)",
+          "probes": "Probe temperature sensors",
+          "notify_services": "Notify service(s) — your phone",
+          "approach_offset_default": "Approaching-target offset (0 = off)"
+        },
+        "data_description": {
+          "probes": "Choose your live '...temperature_probe_N' sensors (not the alarm or battery ones). Selection order becomes Probe 1, 2, 3…",
+          "notify_services": "Your Home Assistant Companion app service, e.g. mobile_app_pixel_9. Add more than one to alert several phones."
+        }
+      }
+    },
+    "error": {
+      "no_probes": "Select at least one probe temperature sensor.",
+      "too_many": "At most 6 probes are supported.",
+      "no_notify": "Select at least one notify service. If none appear, install the Home Assistant app on your phone and sign in, then try again."
+    },
+    "abort": {
+      "already_configured": "This BBQ device is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Govee BBQ options",
+        "description": "Adjust the reminder cadence and your presets.",
+        "data": {
+          "reminder_minutes": "Reminder interval (minutes)",
+          "presets_text": "Presets — one per line: Name | high | low (use 0 for low to leave it unchanged)"
+        }
+      }
+    }
+  }
+}
