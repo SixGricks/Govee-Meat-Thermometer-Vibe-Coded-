@@ -1,0 +1,51 @@
+name: Release on version bump
+
+# Creates a git tag + GitHub Release (vX.Y.Z) whenever the integration's
+# manifest version changes on main. HACS reads published Releases, so this
+# keeps "bump manifest version -> tag/release appears" fully automatic.
+#
+# - push to main touching manifest.json -> auto-release
+# - manual run (workflow_dispatch) -> releases the current manifest version
+#   (handy for the very first release of an already-merged version)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - custom_components/govee_bbq/manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from manifest
+        id: manifest
+        run: |
+          VERSION="$(jq -r .version custom_components/govee_bbq/manifest.json)"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "::error::No version found in manifest.json"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create release if it doesn't exist
+        run: |
+          TAG="${{ steps.manifest.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to do."
+            exit 0
+          fi
+          echo "Creating release $TAG"
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
