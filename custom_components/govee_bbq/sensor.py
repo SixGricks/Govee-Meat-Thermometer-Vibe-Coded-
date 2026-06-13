@@ -80,6 +80,11 @@ class GoveeBBQHubSensor(SensorEntity):
             "name": self._entry.data.get(CONF_NAME, "BBQ"),
             "probes": data.get("probes", []),
             "presets": data.get("presets", []),
+            "preset_categories": data.get("preset_categories", []),
             "approach_offset": data.get("approach_offset", 0),
             "approach_offset_entity": data.get("approach_offset_entity"),
+            "battery": data.get("battery"),
+            "battery_entity": data.get("battery_entity"),
+            "notify_selected": data.get("notify_selected", []),
+            "notify_available": data.get("notify_available", []),
         }
