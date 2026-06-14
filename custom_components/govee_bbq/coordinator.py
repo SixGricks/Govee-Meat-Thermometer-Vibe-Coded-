@@ -19,6 +19,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
     async_track_state_change_event,
+    async_track_state_report_event,
     async_track_time_interval,
 )
 from homeassistant.util import dt as dt_util
@@ -78,10 +79,15 @@ class GoveeBBQCoordinator:
         # battery sensor belonging to the same device as the probes (resolved
         # once at setup from the entity/device registry — may be None).
         self.battery_entity: str | None = None
-        # Liveness tracking: timestamps of genuine temperature changes per probe
-        # (1-based). Govee streams a fixed placeholder reading for empty slots,
-        # so only a value that actually moves proves a probe is plugged in.
+        # Liveness tracking: timestamps of state reports per probe (1-based). An
+        # unplugged probe stops receiving updates (its last reading just goes
+        # stale), so counting how often Home Assistant actually writes the
+        # sensor — value changed or not — is the reliable "data is coming in"
+        # tell. A live probe is one written at least LIVE_MIN_UPDATES times in
+        # the trailing LIVE_WINDOW_SECONDS.
         self._update_history: dict[int, list[float]] = {}
+        # coalesces a burst of report/change events into a single re-evaluate
+        self._eval_scheduled = False
         # debounce + latch state, keyed (probe, kind)
         self._cond_since: dict[tuple[int, str], float] = {}
         self._latched: set[tuple[int, str]] = set()
@@ -96,9 +102,16 @@ class GoveeBBQCoordinator:
     async def async_setup(self) -> None:
         """Subscribe to sensor changes, the reminder timer, and pause events."""
         if self.probe_sensors:
+            # Count every write to a probe sensor: a value change AND an
+            # identical re-report both prove the device is still streaming.
             self._unsubs.append(
                 async_track_state_change_event(
-                    self.hass, self.probe_sensors, self._handle_probe_change
+                    self.hass, self.probe_sensors, self._handle_probe_update
+                )
+            )
+            self._unsubs.append(
+                async_track_state_report_event(
+                    self.hass, self.probe_sensors, self._handle_probe_update
                 )
             )
         # Auto-discover the device battery so the card can show it (opt-in).
@@ -303,10 +316,13 @@ class GoveeBBQCoordinator:
             return None
 
     def temp(self, probe: int) -> tuple[float | None, str, bool, Any]:
-        """Return (value or None, unit, available, last_updated).
+        """Return (value or None, unit, available, last_reported).
 
         "available" here means the sensor currently holds a numeric reading;
-        it does NOT mean a probe is plugged in — see _is_live for that.
+        it does NOT mean a probe is plugged in — see _is_live for that. The
+        timestamp is last_reported (when data last arrived), not last_updated
+        (when the value last changed), so a steady live probe still reads as
+        recently updated.
         """
         idx = probe - 1
         if idx < 0 or idx >= len(self.probe_sensors):
@@ -316,7 +332,8 @@ class GoveeBBQCoordinator:
             return None, "°", False, None
         unit = state.attributes.get("unit_of_measurement", "°")
         value = self._state_value(state)
-        return value, unit, value is not None, state.last_updated
+        last_reported = getattr(state, "last_reported", None) or state.last_updated
+        return value, unit, value is not None, last_reported
 
     # ------------------------------------------------------------------ #
     # liveness ("is a probe actually plugged in?")
@@ -340,7 +357,7 @@ class GoveeBBQCoordinator:
         self._prune_history(probe)
 
     def _is_live(self, probe: int) -> bool:
-        """True only when the probe's temperature has moved enough recently."""
+        """True only when the probe was written often enough recently."""
         self._prune_history(probe)
         return len(self._update_history.get(probe, [])) >= LIVE_MIN_UPDATES
 
@@ -352,21 +369,15 @@ class GoveeBBQCoordinator:
         self.async_request_evaluate()
 
     @callback
-    def _handle_probe_change(self, event: Event) -> None:
-        """Count genuine temperature changes, then re-evaluate.
+    def _handle_probe_update(self, event: Event) -> None:
+        """Record a probe write (change OR identical re-report), then re-evaluate.
 
-        Home Assistant only fires a state-change event when the value actually
-        changes (an identical re-report is a separate, ignored event), so a
-        Govee placeholder reading for an empty slot never gets counted. We
-        still compare old/new defensively in case an attribute-only change
-        slips through.
+        Both EVENT_STATE_CHANGED and EVENT_STATE_REPORTED carry "new_state";
+        either one means the device just sent fresh data for this probe.
         """
         probe = self._probe_for_entity(event.data.get("entity_id"))
-        if probe is not None:
-            new_value = self._state_value(event.data.get("new_state"))
-            old_value = self._state_value(event.data.get("old_state"))
-            if new_value is not None and new_value != old_value:
-                self._record_update(probe)
+        if probe is not None and self._state_value(event.data.get("new_state")) is not None:
+            self._record_update(probe)
         self.async_request_evaluate()
 
     @callback
@@ -375,7 +386,16 @@ class GoveeBBQCoordinator:
 
     @callback
     def async_request_evaluate(self) -> None:
-        self.hass.async_create_task(self.async_evaluate())
+        # Probe reports can arrive several times a second; coalesce a burst into
+        # one evaluation so we don't spawn a task per report.
+        if self._eval_scheduled:
+            return
+        self._eval_scheduled = True
+        self.hass.async_create_task(self._async_evaluate_once())
+
+    async def _async_evaluate_once(self) -> None:
+        self._eval_scheduled = False
+        await self.async_evaluate()
 
     @callback
     def async_notify_latched(self, probe: int) -> None:

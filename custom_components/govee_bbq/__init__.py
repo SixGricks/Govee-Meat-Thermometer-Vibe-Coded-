@@ -8,6 +8,7 @@ from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration
 
 from .const import CARD_FILENAME, CARD_URL, DOMAIN, PLATFORMS
 from .coordinator import GoveeBBQCoordinator
@@ -54,14 +55,27 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def _async_register_card(hass: HomeAssistant) -> None:
-    """Serve the bundled Lovelace card and add it to the frontend once."""
+    """Serve the bundled Lovelace card and add it to the frontend once.
+
+    The card is served with cache headers ON so the mobile app / tablet
+    browsers keep it ready locally — re-fetching it on every dashboard open
+    over a slow link is what makes Lovelace render before the custom element
+    is defined ("Custom element doesn't exist: govee-bbq-card"). To still pick
+    up new versions after a HACS update, the script URL carries a ?v=<version>
+    query tied to the integration version, which busts the cache on upgrade.
+    """
     global _CARD_REGISTERED  # noqa: PLW0603
     if _CARD_REGISTERED:
         return
     path = os.path.join(os.path.dirname(__file__), "www", CARD_FILENAME)
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(CARD_URL, path, False)]
+        [StaticPathConfig(CARD_URL, path, True)]
     )
-    add_extra_js_url(hass, CARD_URL)
+    try:
+        integration = await async_get_integration(hass, DOMAIN)
+        version = str(integration.version) if integration.version else "dev"
+    except Exception:  # noqa: BLE001 - versioning is best-effort, never block setup
+        version = "dev"
+    add_extra_js_url(hass, f"{CARD_URL}?v={version}")
     _CARD_REGISTERED = True
-    _LOGGER.debug("Registered Govee BBQ card at %s", CARD_URL)
+    _LOGGER.debug("Registered Govee BBQ card at %s?v=%s", CARD_URL, version)

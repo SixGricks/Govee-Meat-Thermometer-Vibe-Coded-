@@ -161,11 +161,11 @@ one the card reads; its state = number of probes currently in alarm).
   `…temperature_probe_N` sensors and your Bluetooth proxy is online and in
   range.
 - **Probe shows "no signal" / no temperature** — this is intentional for
-  *empty* slots. Govee keeps reporting a fixed placeholder reading for a probe
-  that isn't plugged in, so the integration only shows a temperature once the
-  reading actually changes a couple of times within ~2 minutes (proof a probe
-  is connected and streaming). A real probe normally goes live within seconds;
-  if a connected probe drops to "no signal", check the Bluetooth proxy range.
+  *empty* slots. An unplugged probe just holds its last (stale) reading, so the
+  integration only shows a temperature once the sensor is actually being
+  written a couple of times within ~2 minutes (proof the device is still
+  streaming that probe). A real probe normally goes live within seconds; if a
+  connected probe drops to "no signal", check the Bluetooth proxy range.
 - **No notifications** — re-check the notify service in the integration
   options; on Android exempt the Companion app from battery optimization and
   check the "BBQ Alarm" notification channel isn't muted; on iOS confirm
