@@ -19,6 +19,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
     async_track_state_change_event,
+    async_track_state_report_event,
     async_track_time_interval,
 )
 from homeassistant.util import dt as dt_util
@@ -33,6 +34,9 @@ from .const import (
     DEFAULT_PRESET_CATEGORY,
     DEFAULT_PRESETS,
     DEFAULT_REMINDER_MINUTES,
+    LIVE_CHECK_SECONDS,
+    LIVE_MIN_UPDATES,
+    LIVE_WINDOW_SECONDS,
     NOTIFICATION_ACTION_EVENT,
     NOTIFY_TAG_PREFIX,
     PRESET_CATEGORIES,
@@ -75,6 +79,15 @@ class GoveeBBQCoordinator:
         # battery sensor belonging to the same device as the probes (resolved
         # once at setup from the entity/device registry — may be None).
         self.battery_entity: str | None = None
+        # Liveness tracking: timestamps of state reports per probe (1-based). An
+        # unplugged probe stops receiving updates (its last reading just goes
+        # stale), so counting how often Home Assistant actually writes the
+        # sensor — value changed or not — is the reliable "data is coming in"
+        # tell. A live probe is one written at least LIVE_MIN_UPDATES times in
+        # the trailing LIVE_WINDOW_SECONDS.
+        self._update_history: dict[int, list[float]] = {}
+        # coalesces a burst of report/change events into a single re-evaluate
+        self._eval_scheduled = False
         # debounce + latch state, keyed (probe, kind)
         self._cond_since: dict[tuple[int, str], float] = {}
         self._latched: set[tuple[int, str]] = set()
@@ -89,9 +102,16 @@ class GoveeBBQCoordinator:
     async def async_setup(self) -> None:
         """Subscribe to sensor changes, the reminder timer, and pause events."""
         if self.probe_sensors:
+            # Count every write to a probe sensor: a value change AND an
+            # identical re-report both prove the device is still streaming.
             self._unsubs.append(
                 async_track_state_change_event(
-                    self.hass, self.probe_sensors, self._handle_temp_change
+                    self.hass, self.probe_sensors, self._handle_probe_update
+                )
+            )
+            self._unsubs.append(
+                async_track_state_report_event(
+                    self.hass, self.probe_sensors, self._handle_probe_update
                 )
             )
         # Auto-discover the device battery so the card can show it (opt-in).
@@ -107,6 +127,15 @@ class GoveeBBQCoordinator:
                 self.hass,
                 self._handle_reminder,
                 timedelta(minutes=self.reminder_minutes),
+            )
+        )
+        # Re-evaluate on a fixed cadence so a probe that stops sending updates
+        # flips back to "no signal" even though no state change event arrives.
+        self._unsubs.append(
+            async_track_time_interval(
+                self.hass,
+                self._handle_liveness_tick,
+                timedelta(seconds=LIVE_CHECK_SECONDS),
             )
         )
         self._unsubs.append(
@@ -276,8 +305,25 @@ class GoveeBBQCoordinator:
     def _pause_action(self, probe: int) -> str:
         return f"{PAUSE_ACTION_PREFIX}{self.entry.entry_id}_{probe}"
 
+    @staticmethod
+    def _state_value(state: Any) -> float | None:
+        """Numeric value of a state, or None if missing/unavailable/non-numeric."""
+        if state is None or state.state in ("unavailable", "unknown", "", None):
+            return None
+        try:
+            return float(state.state)
+        except (TypeError, ValueError):
+            return None
+
     def temp(self, probe: int) -> tuple[float | None, str, bool, Any]:
-        """Return (value or None, unit, available, last_updated)."""
+        """Return (value or None, unit, available, last_reported).
+
+        "available" here means the sensor currently holds a numeric reading;
+        it does NOT mean a probe is plugged in — see _is_live for that. The
+        timestamp is last_reported (when data last arrived), not last_updated
+        (when the value last changed), so a steady live probe still reads as
+        recently updated.
+        """
         idx = probe - 1
         if idx < 0 or idx >= len(self.probe_sensors):
             return None, "°", False, None
@@ -285,12 +331,35 @@ class GoveeBBQCoordinator:
         if state is None:
             return None, "°", False, None
         unit = state.attributes.get("unit_of_measurement", "°")
-        if state.state in ("unavailable", "unknown", "", None):
-            return None, unit, False, state.last_updated
+        value = self._state_value(state)
+        last_reported = getattr(state, "last_reported", None) or state.last_updated
+        return value, unit, value is not None, last_reported
+
+    # ------------------------------------------------------------------ #
+    # liveness ("is a probe actually plugged in?")
+    # ------------------------------------------------------------------ #
+    def _probe_for_entity(self, entity_id: str | None) -> int | None:
         try:
-            return float(state.state), unit, True, state.last_updated
-        except (TypeError, ValueError):
-            return None, unit, False, state.last_updated
+            return self.probe_sensors.index(entity_id) + 1
+        except (ValueError, TypeError):
+            return None
+
+    def _prune_history(self, probe: int) -> None:
+        history = self._update_history.get(probe)
+        if not history:
+            return
+        cutoff = dt_util.utcnow().timestamp() - LIVE_WINDOW_SECONDS
+        self._update_history[probe] = [t for t in history if t >= cutoff]
+
+    def _record_update(self, probe: int) -> None:
+        history = self._update_history.setdefault(probe, [])
+        history.append(dt_util.utcnow().timestamp())
+        self._prune_history(probe)
+
+    def _is_live(self, probe: int) -> bool:
+        """True only when the probe was written often enough recently."""
+        self._prune_history(probe)
+        return len(self._update_history.get(probe, [])) >= LIVE_MIN_UPDATES
 
     # ------------------------------------------------------------------ #
     # evaluation
@@ -300,8 +369,33 @@ class GoveeBBQCoordinator:
         self.async_request_evaluate()
 
     @callback
+    def _handle_probe_update(self, event: Event) -> None:
+        """Record a probe write (change OR identical re-report), then re-evaluate.
+
+        Both EVENT_STATE_CHANGED and EVENT_STATE_REPORTED carry "new_state";
+        either one means the device just sent fresh data for this probe.
+        """
+        probe = self._probe_for_entity(event.data.get("entity_id"))
+        if probe is not None and self._state_value(event.data.get("new_state")) is not None:
+            self._record_update(probe)
+        self.async_request_evaluate()
+
+    @callback
+    def _handle_liveness_tick(self, _now) -> None:
+        self.async_request_evaluate()
+
+    @callback
     def async_request_evaluate(self) -> None:
-        self.hass.async_create_task(self.async_evaluate())
+        # Probe reports can arrive several times a second; coalesce a burst into
+        # one evaluation so we don't spawn a task per report.
+        if self._eval_scheduled:
+            return
+        self._eval_scheduled = True
+        self.hass.async_create_task(self._async_evaluate_once())
+
+    async def _async_evaluate_once(self) -> None:
+        self._eval_scheduled = False
+        await self.async_evaluate()
 
     @callback
     def async_notify_latched(self, probe: int) -> None:
@@ -324,6 +418,12 @@ class GoveeBBQCoordinator:
         probes: list[dict] = []
         for probe in range(1, self.probe_count + 1):
             temp, unit, available, last_updated = self.temp(probe)
+            # A reading only counts if the probe is actually streaming data;
+            # otherwise treat it as offline so the card hides the temperature.
+            live = self._is_live(probe)
+            available = available and live
+            if not available:
+                temp = None
             high = self._num(self.high.get(probe))
             low = self._num(self.low.get(probe))
 
@@ -346,6 +446,7 @@ class GoveeBBQCoordinator:
                     "temp": round(temp, 1) if temp is not None else None,
                     "unit": unit,
                     "available": available,
+                    "live": live,
                     "last_updated": last_updated.isoformat() if last_updated else None,
                     "name": self.probe_name(probe),
                     "name_entity": self._eid(self.names.get(probe)),
@@ -431,7 +532,7 @@ class GoveeBBQCoordinator:
     # ------------------------------------------------------------------ #
     async def _async_notify(self, probe: int, kind: str, reminder: bool = False) -> None:
         temp, unit, available, _ = self.temp(probe)
-        if temp is None or not available:
+        if temp is None or not available or not self._is_live(probe):
             return
         name = self.probe_name(probe)
         high = self._num(self.high.get(probe))

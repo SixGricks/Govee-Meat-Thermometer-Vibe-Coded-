@@ -21,6 +21,17 @@ DEFAULT_REMINDER_MINUTES = 5
 DEFAULT_DEBOUNCE_SECONDS = 10
 MAX_PROBES = 6
 
+# --- "is a probe actually plugged in?" detection ---
+# A value alone doesn't mean a probe is connected — an unplugged probe just
+# holds its last (stale) reading. A probe is only treated as live when Home
+# Assistant has written its sensor (a value change OR an identical re-report,
+# i.e. a state report) at least LIVE_MIN_UPDATES times within the trailing
+# LIVE_WINDOW_SECONDS. We re-evaluate every LIVE_CHECK_SECONDS so a probe flips
+# back to "no signal" when those updates stop arriving.
+LIVE_WINDOW_SECONDS = 120
+LIVE_MIN_UPDATES = 2
+LIVE_CHECK_SECONDS = 30
+
 TARGET_MIN = 0
 TARGET_MAX = 600
 TARGET_STEP = 1
